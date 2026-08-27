@@ -1,0 +1,77 @@
+using System.Text.Json.Serialization;
+using HenryTracker.Endpoints;
+using HenryTracker.Services;
+using Microsoft.AspNetCore.Authentication.Cookies;
+
+var builder = WebApplication.CreateBuilder(args);
+
+// Request/response bodies should accept and emit enums (e.g. AppointmentCategory)
+// as their string names ("Vet") rather than raw numbers.
+builder.Services.ConfigureHttpJsonOptions(options =>
+{
+    options.SerializerOptions.Converters.Add(new JsonStringEnumConverter());
+});
+
+// --- Data storage -----------------------------------------------------
+// Everything lives under this directory as small JSON files. In Docker this
+// is a mounted volume so data survives container rebuilds; see docker-compose.yml.
+var dataDir = builder.Configuration["DATA_DIR"] ?? Path.Combine(builder.Environment.ContentRootPath, "data");
+builder.Services.AddSingleton(new JsonFileStore(dataDir));
+builder.Services.AddSingleton<ProfileRepository>();
+builder.Services.AddSingleton<AppointmentRepository>();
+builder.Services.AddSingleton<DetailRepository>();
+
+// --- Auth ---------------------------------------------------------------
+builder.Services.AddSingleton<PasswordProvider>();
+builder.Services.AddSingleton<LoginThrottle>();
+
+builder.Services
+    .AddAuthentication(CookieAuthenticationDefaults.AuthenticationScheme)
+    .AddCookie(options =>
+    {
+        options.Cookie.Name = "henry_auth";
+        options.Cookie.HttpOnly = true;
+        options.Cookie.SameSite = SameSiteMode.Strict;
+        options.ExpireTimeSpan = TimeSpan.FromHours(12);
+        options.SlidingExpiration = true;
+
+        // This app is an API + static frontend, not a page-redirect app:
+        // return plain status codes instead of redirecting to a login page.
+        options.Events.OnRedirectToLogin = ctx =>
+        {
+            ctx.Response.StatusCode = StatusCodes.Status401Unauthorized;
+            return Task.CompletedTask;
+        };
+        options.Events.OnRedirectToAccessDenied = ctx =>
+        {
+            ctx.Response.StatusCode = StatusCodes.Status403Forbidden;
+            return Task.CompletedTask;
+        };
+    });
+
+builder.Services.AddAuthorization();
+
+var app = builder.Build();
+
+var passwordProvider = app.Services.GetRequiredService<PasswordProvider>();
+if (passwordProvider.WasGenerated)
+{
+    app.Logger.LogWarning("=================================================================");
+    app.Logger.LogWarning("No HENRY_APP_PASSWORD was set. A temporary password was generated for this run:");
+    app.Logger.LogWarning("    {Password}", passwordProvider.Password);
+    app.Logger.LogWarning("It will change on every restart. Set HENRY_APP_PASSWORD in your .env file to keep a fixed password.");
+    app.Logger.LogWarning("=================================================================");
+}
+
+app.UseDefaultFiles();
+app.UseStaticFiles();
+
+app.UseAuthentication();
+app.UseAuthorization();
+
+app.MapAuthEndpoints();
+app.MapCatEndpoints();
+app.MapAppointmentEndpoints();
+app.MapDetailEndpoints();
+
+app.Run();

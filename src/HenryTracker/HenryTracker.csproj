@@ -1,0 +1,14 @@
+<Project Sdk="Microsoft.NET.Sdk.Web">
+
+  <PropertyGroup>
+    <TargetFramework>net8.0</TargetFramework>
+    <Nullable>enable</Nullable>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <InvariantGlobalization>true</InvariantGlobalization>
+    <RootNamespace>HenryTracker</RootNamespace>
+    <!-- No NuGet packages are referenced on purpose: cookie auth and JSON are
+         both part of the ASP.NET Core shared framework / BCL, so this project
+         builds fully offline (handy for reproducible Docker builds). -->
+  </PropertyGroup>
+
+</Project>
