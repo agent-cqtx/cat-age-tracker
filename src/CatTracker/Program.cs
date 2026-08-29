@@ -64,7 +64,21 @@ if (passwordProvider.WasGenerated)
 }
 
 app.UseDefaultFiles();
-app.UseStaticFiles();
+
+// This is a small self-hosted app that gets rebuilt/redeployed often during
+// development -- browsers caching index.html/app.js/styles.css from before
+// a rebuild (and then silently rendering against stale markup) is a much
+// more likely problem than the bandwidth cost of not caching a few small
+// files. Deleting cookies doesn't clear this cache, which is why a stale
+// tab can look broken even after clearing site data -- a hard refresh
+// (Ctrl+Shift+R) or "Disable cache" in devtools' Network tab fixes it.
+app.UseStaticFiles(new StaticFileOptions
+{
+    OnPrepareResponse = ctx =>
+    {
+        ctx.Context.Response.Headers.CacheControl = "no-store";
+    }
+});
 
 app.UseAuthentication();
 app.UseAuthorization();
