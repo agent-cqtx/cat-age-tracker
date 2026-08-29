@@ -164,6 +164,13 @@
     document.getElementById('stageDescription').textContent = status.lifeStageDescription;
     document.title = `${status.name} · ${status.formattedAge} old`;
 
+    const birthDate = new Date(`${status.birthDate}T00:00:00`);
+    document.getElementById('birthdateNote').textContent = `Born ${birthDate.toLocaleDateString(undefined, {
+      year: 'numeric',
+      month: 'long',
+      day: 'numeric',
+    })}`;
+
     const slider = document.getElementById('timelineSlider');
     slider.value = Math.min(25, status.catYears).toFixed(2);
 

@@ -212,6 +212,15 @@ a {
   gap: 20px;
 }
 
+.birthdate-note {
+  margin-top: 18px;
+  padding-top: 16px;
+  border-top: 1px dashed var(--hairline);
+  font-family: var(--font-mono);
+  font-size: 12px;
+  color: var(--graphite);
+}
+
 .big-mono {
   font-family: var(--font-mono);
   font-size: 28px;
