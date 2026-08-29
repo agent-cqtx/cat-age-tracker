@@ -1,11 +1,20 @@
 /* ==========================================================================
-   Henry's Age Tracker — design tokens
-   Palette is strictly black / white / gray (no accent color), echoing
-   Henry's own tuxedo coloring. Dark mode swaps ink/paper roles but keeps
-   the same strict grayscale rule.
+   Cat Age Tracker — design tokens
+   Each theme is a small, mostly-neutral palette meant to echo one cat
+   coloring, set via [data-theme="..."] on <html>. --ink/--paper/etc. stay
+   high-contrast in every theme (they carry body text); --mark and
+   --mark-patch are the more expressive colors used only by the cat-mark
+   icon and a couple of accent touches, so legibility never depends on
+   which theme is picked. Dark mode applies one unified dark palette to the
+   neutral tokens regardless of theme, but leaves --mark/--mark-patch alone
+   so the icon keeps its character.
+
+   Adding a theme? Add a [data-theme="key"] block below AND a matching
+   entry in Data/ThemeCatalog.cs (key + swatch color) on the backend.
    ========================================================================== */
 
 :root {
+  /* Tuxedo (default/base) */
   --ink: #111111;
   --paper: #fafafa;
   --card: #ffffff;
@@ -13,6 +22,8 @@
   --graphite: #767676;
   --hairline: #d9d9d9;
   --hairline-strong: #bebebe;
+  --mark: #111111;
+  --mark-patch: var(--card);
 
   --radius-sm: 6px;
   --radius-md: 14px;
@@ -23,8 +34,69 @@
   --font-mono: ui-monospace, SFMono-Regular, "SF Mono", Menlo, Consolas, "Liberation Mono", monospace;
 }
 
+[data-theme="tuxedo"] {
+  --ink: #111111;
+  --paper: #fafafa;
+  --card: #ffffff;
+  --charcoal: #3a3a3a;
+  --graphite: #767676;
+  --hairline: #d9d9d9;
+  --hairline-strong: #bebebe;
+  --mark: #111111;
+  --mark-patch: var(--card);
+}
+
+[data-theme="black"] {
+  --ink: #0d0d0d;
+  --paper: #f7f7f5;
+  --card: #ffffff;
+  --charcoal: #333333;
+  --graphite: #757575;
+  --hairline: #dcdcd9;
+  --hairline-strong: #c2c2be;
+  --mark: #0d0d0d;
+  --mark-patch: var(--card);
+}
+
+[data-theme="white"] {
+  --ink: #262626;
+  --paper: #ffffff;
+  --card: #ffffff;
+  --charcoal: #3d3d3d;
+  --graphite: #8a8a8a;
+  --hairline: #e6e6e4;
+  --hairline-strong: #d2d2cf;
+  --mark: #dedcd8;
+  --mark-patch: var(--card);
+}
+
+[data-theme="gray"] {
+  --ink: #34363a;
+  --paper: #f6f6f5;
+  --card: #ffffff;
+  --charcoal: #45474b;
+  --graphite: #83868a;
+  --hairline: #dedcdc;
+  --hairline-strong: #c6c6c3;
+  --mark: #6b6e73;
+  --mark-patch: var(--card);
+}
+
+[data-theme="ginger"] {
+  --ink: #3a2415;
+  --paper: #fff9f3;
+  --card: #ffffff;
+  --charcoal: #4a2f1c;
+  --graphite: #8c6a4e;
+  --hairline: #eedfcf;
+  --hairline-strong: #dcc3a8;
+  --mark: #c1662c;
+  --mark-patch: #ffe7d2;
+}
+
 @media (prefers-color-scheme: dark) {
-  :root {
+  :root,
+  [data-theme] {
     --ink: #f5f5f5;
     --paper: #121212;
     --card: #1b1b1b;
@@ -34,6 +106,9 @@
     --hairline-strong: #4a4a4a;
     --shadow-card: 0 1px 2px rgba(0, 0, 0, 0.3), 0 10px 30px rgba(0, 0, 0, 0.45);
   }
+  /* --mark/--mark-patch intentionally aren't reset here -- a light mark
+     color (e.g. the "white" theme's) reads just as well against the dark
+     card background, so the icon keeps its per-theme character. */
 }
 
 * {
@@ -117,13 +192,68 @@ a {
   width: 64px;
   height: 64px;
   flex: none;
-  color: var(--ink);
 }
 
 .hero-mark svg {
   width: 100%;
   height: 100%;
   display: block;
+}
+
+/* ==========================================================================
+   Cat mark — one shared silhouette, recolored/reshaped per theme.
+   Default (solid) mode: body/head/ears filled with --mark, tail is a
+   stroked curve in --mark, eyes cut out in --card, and the chest/paw patch
+   hidden unless a theme opts in.
+   ========================================================================== */
+
+.cat-mark .mark-body,
+.cat-mark .mark-head,
+.cat-mark .mark-ear {
+  fill: var(--mark);
+  stroke: none;
+}
+
+.cat-mark .mark-tail {
+  fill: none;
+  stroke: var(--mark);
+}
+
+.cat-mark .mark-eye {
+  fill: var(--card);
+}
+
+.cat-mark .mark-patch,
+.cat-mark .mark-paw {
+  fill: var(--mark-patch);
+  display: none;
+}
+
+/* Bicolor themes: show the chest/paw patch */
+[data-theme="tuxedo"] .cat-mark .mark-patch,
+[data-theme="tuxedo"] .cat-mark .mark-paw,
+[data-theme="ginger"] .cat-mark .mark-patch,
+[data-theme="ginger"] .cat-mark .mark-paw {
+  display: block;
+}
+
+/* White/cream theme: too light to read as a solid silhouette, so switch to
+   an outlined mark instead -- --mark stays a light fill, --ink provides
+   the outline stroke and the eyes so it's still legible on white. */
+[data-theme="white"] .cat-mark .mark-body,
+[data-theme="white"] .cat-mark .mark-head,
+[data-theme="white"] .cat-mark .mark-ear {
+  stroke: var(--ink);
+  stroke-width: 2.5;
+  stroke-linejoin: round;
+}
+
+[data-theme="white"] .cat-mark .mark-tail {
+  stroke: var(--ink);
+}
+
+[data-theme="white"] .cat-mark .mark-eye {
+  fill: var(--ink);
 }
 
 .hero-text {
@@ -175,6 +305,101 @@ a {
   background: var(--ink);
   color: var(--paper);
   border-color: var(--ink);
+}
+
+.icon-btn-lg {
+  flex: none;
+  background: none;
+  border: 1px solid var(--hairline-strong);
+  border-radius: 999px;
+  width: 36px;
+  height: 36px;
+  font-size: 16px;
+  color: var(--charcoal);
+  cursor: pointer;
+}
+
+.icon-btn-lg:hover {
+  background: var(--card);
+  border-color: var(--ink);
+}
+
+/* ==========================================================================
+   Onboarding
+   ========================================================================== */
+
+.onboarding-card {
+  text-align: center;
+  padding: 36px 24px;
+}
+
+.onboarding-card h2 {
+  font-size: 24px;
+  margin-bottom: 10px;
+}
+
+.onboarding-card .hint {
+  max-width: 46ch;
+  margin: 0 auto 22px;
+}
+
+.onboarding-card .primary-btn {
+  width: auto;
+  padding: 12px 28px;
+}
+
+/* ==========================================================================
+   Theme picker
+   ========================================================================== */
+
+.theme-picker {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(120px, 1fr));
+  gap: 8px;
+}
+
+.theme-swatch {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 10px 12px;
+  border: 1px solid var(--hairline-strong);
+  border-radius: var(--radius-sm);
+  background: var(--paper);
+  cursor: pointer;
+  font-size: 13px;
+  color: var(--charcoal);
+  text-align: left;
+}
+
+.theme-swatch:hover {
+  border-color: var(--ink);
+}
+
+.theme-swatch[aria-pressed="true"] {
+  border-color: var(--ink);
+  border-width: 2px;
+  font-weight: 600;
+  color: var(--ink);
+}
+
+.swatch-dot {
+  width: 20px;
+  height: 20px;
+  border-radius: 50%;
+  flex: none;
+  border: 1px solid rgba(0, 0, 0, 0.15);
+}
+
+.swatch-name {
+  display: block;
+}
+
+.swatch-desc {
+  display: block;
+  font-size: 11px;
+  color: var(--graphite);
+  font-weight: 400;
 }
 
 /* ==========================================================================

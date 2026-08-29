@@ -1,16 +1,18 @@
-using HenryTracker.Data;
-using HenryTracker.Models;
-using HenryTracker.Services;
+using CatTracker.Data;
+using CatTracker.Models;
+using CatTracker.Services;
 
-namespace HenryTracker.Endpoints;
+namespace CatTracker.Endpoints;
 
 public static class CatEndpoints
 {
     private record CatStatusResponse(
+        bool NeedsOnboarding,
         string Name,
         string Breed,
         string ColorPattern,
         DateOnly BirthDate,
+        string Theme,
         double CatYears,
         string FormattedAge,
         double HumanEquivalentYears,
@@ -33,7 +35,7 @@ public static class CatEndpoints
         bool IsToday,
         string RelativeLabel);
 
-    private record ProfileUpdateRequest(string Name, string Breed, string ColorPattern, DateOnly BirthDate);
+    private record ProfileUpdateRequest(string Name, string? Breed, string? ColorPattern, DateOnly BirthDate, string Theme);
 
     public static void MapCatEndpoints(this IEndpointRouteBuilder app)
     {
@@ -41,16 +43,31 @@ public static class CatEndpoints
 
         group.MapGet("/", async (ProfileRepository repo) =>
         {
-            var profile = await repo.GetAsync();
+            var (profile, isOnboarded) = await repo.GetWithStatusAsync();
+
+            if (!isOnboarded)
+            {
+                // No real data yet -- the frontend shows the onboarding form
+                // instead of the dashboard, so these computed fields are
+                // just harmless placeholders.
+                return Results.Ok(new CatStatusResponse(
+                    NeedsOnboarding: true,
+                    profile.Name, profile.Breed, profile.ColorPattern, profile.BirthDate, profile.Theme,
+                    CatYears: 0, FormattedAge: "", HumanEquivalentYears: 0,
+                    LifeStageName: "", LifeStageRangeLabel: "", LifeStageSummary: "", LifeStageDescription: ""));
+            }
+
             var today = DateOnly.FromDateTime(DateTime.Now);
             var years = CatAgeMath.CatYearsBetween(profile.BirthDate, today);
             var stage = CatAgeMath.GetLifeStage(years, LifeStageCatalog.Stages);
 
             return Results.Ok(new CatStatusResponse(
+                NeedsOnboarding: false,
                 profile.Name,
                 profile.Breed,
                 profile.ColorPattern,
                 profile.BirthDate,
+                profile.Theme,
                 Math.Round(years, 3),
                 CatAgeMath.FormatAge(years),
                 Math.Round(CatAgeMath.HumanEquivalentYears(years), 1),
@@ -62,9 +79,14 @@ public static class CatEndpoints
 
         group.MapGet("/age-at", async (double years, ProfileRepository repo) =>
         {
+            var (profile, isOnboarded) = await repo.GetWithStatusAsync();
+            if (!isOnboarded)
+            {
+                return Results.Conflict(new { error = "Cat profile hasn't been set up yet." });
+            }
+
             years = Math.Clamp(years, 0, 30);
 
-            var profile = await repo.GetAsync();
             var targetDate = profile.BirthDate.AddDays((int)Math.Round(years * 365.25));
             var today = DateOnly.FromDateTime(DateTime.Now);
             var stage = CatAgeMath.GetLifeStage(years, LifeStageCatalog.Stages);
@@ -88,6 +110,8 @@ public static class CatEndpoints
 
         group.MapGet("/lifestages", () => Results.Ok(LifeStageCatalog.Stages));
 
+        group.MapGet("/themes", () => Results.Ok(ThemeCatalog.Themes));
+
         group.MapPut("/", async (ProfileUpdateRequest req, ProfileRepository repo) =>
         {
             if (string.IsNullOrWhiteSpace(req.Name))
@@ -95,12 +119,23 @@ public static class CatEndpoints
                 return Results.BadRequest(new { error = "Name is required." });
             }
 
+            if (req.BirthDate == default || req.BirthDate > DateOnly.FromDateTime(DateTime.Now))
+            {
+                return Results.BadRequest(new { error = "A valid birth date is required." });
+            }
+
+            if (string.IsNullOrWhiteSpace(req.Theme) || !ThemeCatalog.IsValidKey(req.Theme))
+            {
+                return Results.BadRequest(new { error = "Unrecognized theme." });
+            }
+
             var updated = new CatProfile
             {
                 Name = req.Name.Trim(),
                 Breed = req.Breed?.Trim() ?? "",
                 ColorPattern = req.ColorPattern?.Trim() ?? "",
-                BirthDate = req.BirthDate
+                BirthDate = req.BirthDate,
+                Theme = req.Theme,
             };
 
             await repo.SaveAsync(updated);

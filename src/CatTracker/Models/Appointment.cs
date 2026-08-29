@@ -1,4 +1,4 @@
-namespace HenryTracker.Models;
+namespace CatTracker.Models;
 
 public enum AppointmentCategory
 {

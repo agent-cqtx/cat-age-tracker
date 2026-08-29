@@ -1,6 +1,6 @@
-using HenryTracker.Models;
+using CatTracker.Models;
 
-namespace HenryTracker.Services;
+namespace CatTracker.Services;
 
 /// <summary>
 /// Cat-to-human age conversion and life-stage lookup. The conversion is the

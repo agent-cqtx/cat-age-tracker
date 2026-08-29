@@ -1,6 +1,6 @@
 using System.Text.Json.Serialization;
-using HenryTracker.Endpoints;
-using HenryTracker.Services;
+using CatTracker.Endpoints;
+using CatTracker.Services;
 using Microsoft.AspNetCore.Authentication.Cookies;
 
 var builder = WebApplication.CreateBuilder(args);
@@ -29,7 +29,7 @@ builder.Services
     .AddAuthentication(CookieAuthenticationDefaults.AuthenticationScheme)
     .AddCookie(options =>
     {
-        options.Cookie.Name = "henry_auth";
+        options.Cookie.Name = "cat_tracker_auth";
         options.Cookie.HttpOnly = true;
         options.Cookie.SameSite = SameSiteMode.Strict;
         options.ExpireTimeSpan = TimeSpan.FromHours(12);
@@ -57,9 +57,9 @@ var passwordProvider = app.Services.GetRequiredService<PasswordProvider>();
 if (passwordProvider.WasGenerated)
 {
     app.Logger.LogWarning("=================================================================");
-    app.Logger.LogWarning("No HENRY_APP_PASSWORD was set. A temporary password was generated for this run:");
+    app.Logger.LogWarning("No APP_PASSWORD was set. A temporary password was generated for this run:");
     app.Logger.LogWarning("    {Password}", passwordProvider.Password);
-    app.Logger.LogWarning("It will change on every restart. Set HENRY_APP_PASSWORD in your .env file to keep a fixed password.");
+    app.Logger.LogWarning("It will change on every restart. Set APP_PASSWORD in your .env file to keep a fixed password.");
     app.Logger.LogWarning("=================================================================");
 }
 

@@ -1,6 +1,6 @@
-using HenryTracker.Models;
+using CatTracker.Models;
 
-namespace HenryTracker.Data;
+namespace CatTracker.Data;
 
 /// <summary>
 /// Reference data for feline life stages. Boundaries are adapted from the

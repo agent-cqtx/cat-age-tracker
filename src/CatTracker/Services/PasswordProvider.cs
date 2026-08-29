@@ -1,8 +1,8 @@
-namespace HenryTracker.Services;
+namespace CatTracker.Services;
 
 /// <summary>
 /// Holds the single password required to make changes. If none is
-/// configured via the HENRY_APP_PASSWORD environment variable, a random one
+/// configured via the APP_PASSWORD environment variable, a random one
 /// is generated for this run and logged at startup, so the app never
 /// silently ships wide open.
 /// </summary>
@@ -13,7 +13,7 @@ public class PasswordProvider
 
     public PasswordProvider(IConfiguration config)
     {
-        var configured = config["HENRY_APP_PASSWORD"];
+        var configured = config["APP_PASSWORD"];
         if (!string.IsNullOrWhiteSpace(configured))
         {
             Password = configured;

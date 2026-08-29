@@ -1,6 +1,6 @@
 using System.Collections.Concurrent;
 
-namespace HenryTracker.Services;
+namespace CatTracker.Services;
 
 /// <summary>
 /// Very small in-memory brute-force guard for the login endpoint: after a

@@ -1,4 +1,4 @@
-namespace HenryTracker.Models;
+namespace CatTracker.Models;
 
 /// <summary>
 /// A freeform piece of information about the cat — e.g. vet contact info,

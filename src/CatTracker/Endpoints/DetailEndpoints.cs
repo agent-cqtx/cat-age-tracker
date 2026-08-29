@@ -1,7 +1,7 @@
-using HenryTracker.Models;
-using HenryTracker.Services;
+using CatTracker.Models;
+using CatTracker.Services;
 
-namespace HenryTracker.Endpoints;
+namespace CatTracker.Endpoints;
 
 public static class DetailEndpoints
 {

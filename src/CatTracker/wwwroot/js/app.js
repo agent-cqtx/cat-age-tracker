@@ -5,11 +5,26 @@
   const state = {
     authenticated: false,
     catProfile: null,
+    needsOnboarding: false,
+    themes: [],
     appointments: [],
     details: [],
     calendarYear: null,
     calendarMonth: null, // 0-11
     selectedDate: null, // 'YYYY-MM-DD' or null
+  };
+
+  const DEFAULT_THEME = 'tuxedo';
+
+  // Mirrors Data/ThemeCatalog.cs -- only used to build the dynamic favicon,
+  // which (being a standalone file the browser loads on its own) can't read
+  // the page's CSS variables. If you add a theme, update both places.
+  const THEME_FAVICON_COLORS = {
+    tuxedo: { mark: '#111111', patch: '#fafafa', outline: false },
+    black: { mark: '#0d0d0d', patch: null, outline: false },
+    white: { mark: '#dedcd8', patch: null, outline: true, ink: '#262626' },
+    gray: { mark: '#6b6e73', patch: null, outline: false },
+    ginger: { mark: '#c1662c', patch: '#ffe7d2', outline: false },
   };
 
   // ---- API helper ----
@@ -48,6 +63,46 @@
     el.classList.remove('hidden');
     clearTimeout(toastTimer);
     toastTimer = setTimeout(() => el.classList.add('hidden'), 2600);
+  }
+
+  // ---- Theme ----
+  function applyTheme(themeKey) {
+    const key = THEME_FAVICON_COLORS[themeKey] ? themeKey : DEFAULT_THEME;
+    document.documentElement.dataset.theme = key;
+    updateFavicon(key);
+  }
+
+  function updateFavicon(themeKey) {
+    const colors = THEME_FAVICON_COLORS[themeKey] || THEME_FAVICON_COLORS[DEFAULT_THEME];
+    const strokeAttrs = colors.outline
+      ? `stroke="${colors.ink}" stroke-width="2.5" stroke-linejoin="round"`
+      : '';
+    const eyeFill = colors.outline ? colors.ink : '#fafafa';
+    const patch = colors.patch
+      ? `<path d="M 60 52 C 69 52, 74 64, 69 82 C 66 94, 54 94, 51 82 C 46 64, 51 52, 60 52 Z" fill="${colors.patch}"/>
+         <ellipse cx="40" cy="96" rx="8" ry="6" fill="${colors.patch}"/>
+         <ellipse cx="80" cy="96" rx="8" ry="6" fill="${colors.patch}"/>`
+      : '';
+    const svg = `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 120 120">
+      <path d="M 86 90 C 106 86, 114 68, 104 50" fill="none" stroke="${colors.outline ? colors.ink : colors.mark}" stroke-width="9" stroke-linecap="round"/>
+      <path d="M 28 98 C 28 66, 42 56, 60 56 C 78 56, 92 66, 92 98 Z" fill="${colors.mark}" ${strokeAttrs}/>
+      <polygon points="33,40 42,16 51,42" fill="${colors.mark}" ${strokeAttrs}/>
+      <polygon points="69,42 78,16 87,40" fill="${colors.mark}" ${strokeAttrs}/>
+      <circle cx="60" cy="46" r="27" fill="${colors.mark}" ${strokeAttrs}/>
+      <ellipse cx="50" cy="45" rx="3.6" ry="5" fill="${eyeFill}"/>
+      <ellipse cx="70" cy="45" rx="3.6" ry="5" fill="${eyeFill}"/>
+      ${patch}
+    </svg>`;
+    const link = document.getElementById('faviconLink');
+    if (link) link.href = `data:image/svg+xml,${encodeURIComponent(svg)}`;
+  }
+
+  async function loadThemes() {
+    try {
+      state.themes = await api('/api/cat/themes');
+    } catch {
+      state.themes = [];
+    }
   }
 
   // ---- Modal ----
@@ -152,9 +207,31 @@
   async function loadCatStatus() {
     const status = await api('/api/cat');
     state.catProfile = status;
+    state.needsOnboarding = status.needsOnboarding;
+
+    applyTheme(status.theme);
+
+    const onboardingCard = document.getElementById('onboardingCard');
+    const appContent = document.getElementById('appContent');
+    const settingsBtn = document.getElementById('settingsBtn');
+
+    if (status.needsOnboarding) {
+      onboardingCard.classList.remove('hidden');
+      appContent.classList.add('hidden');
+      settingsBtn.classList.add('hidden');
+      document.title = 'Cat Age Tracker';
+      document.getElementById('catName').textContent = 'Cat Age Tracker';
+      document.getElementById('catMeta').textContent = "Let's get your cat set up";
+      document.getElementById('lifeStageEyebrow').textContent = '\u00A0';
+      return;
+    }
+
+    onboardingCard.classList.add('hidden');
+    appContent.classList.remove('hidden');
+    settingsBtn.classList.remove('hidden');
 
     document.getElementById('catName').textContent = status.name;
-    document.getElementById('catMeta').textContent = `${status.colorPattern} · ${status.breed}`;
+    document.getElementById('catMeta').textContent = [status.colorPattern, status.breed].filter(Boolean).join(' · ');
     document.getElementById('lifeStageEyebrow').textContent = status.lifeStageName;
     document.getElementById('ageFormatted').textContent = status.formattedAge;
     document.getElementById('humanYears').textContent = `~${status.humanEquivalentYears} yrs`;
@@ -179,6 +256,142 @@
     // drifting a week or two due to slider step rounding.
     showTodayOnTimeline(status);
   }
+
+  // ---- Profile (onboarding + later editing share this form) ----
+  function themeSwatchesHtml(selectedKey) {
+    return state.themes
+      .map(
+        (t) => `
+      <button type="button" class="theme-swatch" data-theme-key="${t.key}"
+              aria-pressed="${t.key === selectedKey ? 'true' : 'false'}">
+        <span class="swatch-dot" style="background:${t.swatchColor}"></span>
+        <span>
+          <span class="swatch-name">${escapeHtml(t.name)}</span>
+          <span class="swatch-desc">${escapeHtml(t.description)}</span>
+        </span>
+      </button>`
+      )
+      .join('');
+  }
+
+  function openProfileModal() {
+    const isOnboarding = state.needsOnboarding;
+    const profile = state.catProfile || {};
+    const needsPassword = !state.authenticated;
+    let selectedTheme = (!isOnboarding && profile.theme) || DEFAULT_THEME;
+
+    const nameVal = isOnboarding ? '' : profile.name || '';
+    const breedVal = isOnboarding ? '' : profile.breed || '';
+    const colorVal = isOnboarding ? '' : profile.colorPattern || '';
+    const birthVal = isOnboarding || !profile.birthDate || profile.birthDate === '0001-01-01' ? '' : profile.birthDate;
+
+    const now = new Date();
+    const todayStr = toDateKey(now.getFullYear(), now.getMonth(), now.getDate());
+
+    openModal(`
+      <button class="modal-close" type="button" data-close>&times;</button>
+      <h2>${isOnboarding ? "Let's set up your cat" : 'Edit cat profile'}</h2>
+      <form id="profileForm">
+        <div class="field">
+          <label for="profileName">Name</label>
+          <input type="text" id="profileName" value="${escapeHtml(nameVal)}" required />
+        </div>
+        <div class="field">
+          <label for="profileBirthDate">Birthdate</label>
+          <input type="date" id="profileBirthDate" value="${birthVal}" max="${todayStr}" required />
+        </div>
+        <div class="field">
+          <label for="profileBreed">Breed (optional)</label>
+          <input type="text" id="profileBreed" value="${escapeHtml(breedVal)}" />
+        </div>
+        <div class="field">
+          <label for="profileColor">Color / pattern (optional)</label>
+          <input type="text" id="profileColor" value="${escapeHtml(colorVal)}" placeholder="e.g. Orange tabby" />
+        </div>
+        <div class="field">
+          <label>Theme</label>
+          <div class="theme-picker" id="profileThemePicker">
+            ${themeSwatchesHtml(selectedTheme)}
+          </div>
+        </div>
+        ${
+          needsPassword
+            ? `<div class="field">
+                 <label for="profilePassword">Password</label>
+                 <input type="password" id="profilePassword" autocomplete="current-password" />
+               </div>`
+            : ''
+        }
+        <div class="field-error hidden" id="profileError"></div>
+        <div class="modal-actions">
+          <button type="button" class="secondary-btn" data-close>Cancel</button>
+          <button type="submit" class="primary-btn">${isOnboarding ? 'Save & start' : 'Save'}</button>
+        </div>
+      </form>
+    `);
+    wireModalClose();
+
+    const picker = document.getElementById('profileThemePicker');
+    picker.querySelectorAll('.theme-swatch').forEach((btn) => {
+      btn.addEventListener('click', () => {
+        selectedTheme = btn.dataset.themeKey;
+        picker.querySelectorAll('.theme-swatch').forEach((b) => {
+          b.setAttribute('aria-pressed', b === btn ? 'true' : 'false');
+        });
+      });
+    });
+
+    document.getElementById('profileForm').addEventListener('submit', async (e) => {
+      e.preventDefault();
+      const name = document.getElementById('profileName').value.trim();
+      const birthDate = document.getElementById('profileBirthDate').value;
+      const breed = document.getElementById('profileBreed').value.trim();
+      const colorPattern = document.getElementById('profileColor').value.trim();
+      const errorEl = document.getElementById('profileError');
+      errorEl.classList.add('hidden');
+
+      if (!name || !birthDate) {
+        errorEl.textContent = 'Name and birthdate are required.';
+        errorEl.classList.remove('hidden');
+        return;
+      }
+
+      try {
+        if (needsPassword) {
+          const password = document.getElementById('profilePassword').value;
+          try {
+            await api('/api/auth/login', { method: 'POST', body: JSON.stringify({ password }) });
+          } catch {
+            errorEl.textContent = 'Wrong password.';
+            errorEl.classList.remove('hidden');
+            return;
+          }
+          setAuthenticated(true);
+        }
+
+        await api('/api/cat', {
+          method: 'PUT',
+          body: JSON.stringify({ name, breed, colorPattern, birthDate, theme: selectedTheme }),
+        });
+
+        closeModal();
+        showToast(isOnboarding ? 'All set!' : 'Profile updated');
+        await loadCatStatus();
+      } catch (err) {
+        // Only the save call (not login) can land here now.
+        if (err.message.includes('401')) {
+          setAuthenticated(false);
+          errorEl.textContent = 'Your session expired. Close this, click Unlock, and try again.';
+        } else {
+          errorEl.textContent = err.message;
+        }
+        errorEl.classList.remove('hidden');
+      }
+    });
+  }
+
+  document.getElementById('startOnboardingBtn').addEventListener('click', () => openProfileModal());
+  document.getElementById('settingsBtn').addEventListener('click', () => openProfileModal());
 
   // ---- Timeline ----
   function buildTapeLabels() {
@@ -676,6 +889,7 @@
     buildTapeLabels();
 
     await refreshAuthStatus();
+    await loadThemes();
     await loadCatStatus();
     await loadAppointments();
     await loadDetails();
@@ -683,6 +897,6 @@
 
   init().catch((err) => {
     console.error(err);
-    showToast("Something went wrong loading Henry's data.");
+    showToast('Something went wrong loading your cat data.');
   });
 })();

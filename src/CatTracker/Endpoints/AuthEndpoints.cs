@@ -1,11 +1,11 @@
 using System.Security.Claims;
 using System.Security.Cryptography;
 using System.Text;
-using HenryTracker.Services;
+using CatTracker.Services;
 using Microsoft.AspNetCore.Authentication;
 using Microsoft.AspNetCore.Authentication.Cookies;
 
-namespace HenryTracker.Endpoints;
+namespace CatTracker.Endpoints;
 
 public static class AuthEndpoints
 {
@@ -37,7 +37,7 @@ public static class AuthEndpoints
             throttle.Reset(clientKey);
 
             var identity = new ClaimsIdentity(
-                new[] { new Claim(ClaimTypes.Name, "henry-owner") },
+                new[] { new Claim(ClaimTypes.Name, "single-user") },
                 CookieAuthenticationDefaults.AuthenticationScheme);
 
             await ctx.SignInAsync(

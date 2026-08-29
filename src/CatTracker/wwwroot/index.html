@@ -1,0 +1,144 @@
+<!DOCTYPE html>
+<html lang="en" data-theme="tuxedo">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Cat Age Tracker</title>
+  <link rel="icon" type="image/svg+xml" href="/favicon.svg" id="faviconLink" />
+  <link rel="stylesheet" href="/css/styles.css" />
+</head>
+<body>
+  <div class="page">
+
+    <header class="hero">
+      <div class="hero-mark" aria-hidden="true">
+        <svg class="cat-mark" viewBox="0 0 120 120" xmlns="http://www.w3.org/2000/svg" stroke-linecap="round">
+          <path class="mark-tail" d="M 86 90 C 106 86, 114 68, 104 50" stroke-width="9"/>
+          <path class="mark-body" d="M 28 98 C 28 66, 42 56, 60 56 C 78 56, 92 66, 92 98 Z"/>
+          <polygon class="mark-ear" points="33,40 42,16 51,42"/>
+          <polygon class="mark-ear" points="69,42 78,16 87,40"/>
+          <circle class="mark-head" cx="60" cy="46" r="27"/>
+          <ellipse class="mark-eye" cx="50" cy="45" rx="3.6" ry="5"/>
+          <ellipse class="mark-eye" cx="70" cy="45" rx="3.6" ry="5"/>
+          <path class="mark-patch" d="M 60 52 C 69 52, 74 64, 69 82 C 66 94, 54 94, 51 82 C 46 64, 51 52, 60 52 Z"/>
+          <ellipse class="mark-paw" cx="40" cy="96" rx="8" ry="6"/>
+          <ellipse class="mark-paw" cx="80" cy="96" rx="8" ry="6"/>
+        </svg>
+      </div>
+      <div class="hero-text">
+        <p class="eyebrow" id="lifeStageEyebrow">&nbsp;</p>
+        <h1 id="catName">Cat Age Tracker</h1>
+        <p class="hero-sub" id="catMeta">&nbsp;</p>
+      </div>
+      <button id="settingsBtn" class="icon-btn-lg hidden" type="button" aria-label="Edit cat profile">⚙</button>
+      <button id="authToggle" class="lock-btn" type="button" data-authed="false">
+        <span id="authToggleLabel">Unlock</span>
+      </button>
+    </header>
+
+    <section class="card onboarding-card hidden" id="onboardingCard">
+      <h2>Let's set up your cat</h2>
+      <p class="hint">
+        Add your cat's name and birthdate, and pick a theme that matches their coloring.
+        You can change any of this later.
+      </p>
+      <button id="startOnboardingBtn" class="primary-btn" type="button">Get started</button>
+    </section>
+
+    <div id="appContent" class="hidden">
+
+      <section class="card age-readout">
+        <div class="age-readout-grid">
+          <div>
+            <span class="label">Age today</span>
+            <span class="big-mono" id="ageFormatted">—</span>
+          </div>
+          <div>
+            <span class="label">In human years, roughly</span>
+            <span class="big-mono" id="humanYears">—</span>
+          </div>
+        </div>
+        <p class="birthdate-note" id="birthdateNote">—</p>
+      </section>
+
+      <section class="card stage-card">
+        <h2><span id="stageName">—</span> <span class="stage-range" id="stageRange"></span></h2>
+        <p class="stage-summary" id="stageSummary"></p>
+        <p id="stageDescription"></p>
+      </section>
+
+      <div class="seam"></div>
+
+      <section class="card timeline-card">
+        <h2>Scroll through their life</h2>
+        <p class="hint">Drag the tape to any age — past or future — to see the date and what that age is about.</p>
+
+        <div class="tape-slider">
+          <input type="range" id="timelineSlider" class="tape-input" min="0" max="25" step="0.02" value="0"
+                 aria-label="Cat age in years" />
+          <div class="tape-labels" id="tapeLabels"></div>
+        </div>
+
+        <div class="timeline-readout">
+          <div class="timeline-toprow">
+            <div class="timeline-date" id="timelineDate">—</div>
+            <div class="timeline-relative" id="timelineRelative">—</div>
+          </div>
+          <div class="timeline-stats">
+            <div class="timeline-stat">
+              <span class="label">Age</span>
+              <span class="value" id="timelineAge">—</span>
+            </div>
+            <div class="timeline-stat">
+              <span class="label">Human years</span>
+              <span class="value" id="timelineHuman">—</span>
+            </div>
+            <div class="timeline-stat">
+              <span class="label">Life stage</span>
+              <span class="value" id="timelineStage">—</span>
+            </div>
+          </div>
+          <p class="timeline-desc" id="timelineDesc"></p>
+          <button id="resetTimeline" class="text-btn" type="button">Jump back to today</button>
+        </div>
+      </section>
+
+      <div class="seam"></div>
+
+      <section class="card calendar-card">
+        <div class="calendar-header">
+          <button class="calendar-nav-btn" id="prevMonth" type="button" aria-label="Previous month">‹</button>
+          <h2 id="calendarMonthLabel">—</h2>
+          <button class="calendar-nav-btn" id="nextMonth" type="button" aria-label="Next month">›</button>
+        </div>
+        <div class="calendar-grid" id="calendarGrid"></div>
+
+        <div id="appointmentList" class="appointment-list"></div>
+        <button id="addAppointmentBtn" class="primary-btn hidden" type="button">+ Add appointment</button>
+      </section>
+
+      <section class="card details-card">
+        <h2>Other details</h2>
+        <p class="hint">Vet contacts, microchip number, food preferences, weight log — anything worth keeping on file.</p>
+        <div id="detailsList"></div>
+        <button id="addDetailBtn" class="primary-btn hidden" type="button">+ Add detail</button>
+      </section>
+
+    </div>
+
+    <footer>
+      <p>Ages are estimates based on commonly used veterinary charts — general reference, not medical advice.</p>
+    </footer>
+  </div>
+
+  <div id="modalOverlay" class="modal-overlay hidden">
+    <div class="modal">
+      <div class="modal-inner" id="modalContent"></div>
+    </div>
+  </div>
+
+  <div id="toast" class="toast hidden"></div>
+
+  <script src="/js/app.js"></script>
+</body>
+</html>

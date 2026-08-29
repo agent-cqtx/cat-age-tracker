@@ -1,4 +1,4 @@
-namespace HenryTracker.Models;
+namespace CatTracker.Models;
 
 /// <summary>
 /// A reference entry describing one feline life stage: an age band, and

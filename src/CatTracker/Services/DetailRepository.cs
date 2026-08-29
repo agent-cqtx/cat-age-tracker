@@ -1,6 +1,6 @@
-using HenryTracker.Models;
+using CatTracker.Models;
 
-namespace HenryTracker.Services;
+namespace CatTracker.Services;
 
 public class DetailRepository
 {

@@ -2,7 +2,7 @@ using System.Collections.Concurrent;
 using System.Text.Json;
 using System.Text.Json.Serialization;
 
-namespace HenryTracker.Services;
+namespace CatTracker.Services;
 
 /// <summary>
 /// A tiny embedded document store: each "table" is one JSON file on disk
@@ -45,6 +45,21 @@ public class JsonFileStore
         try
         {
             return await LoadUnsafeAsync(fileName, defaultFactory);
+        }
+        finally
+        {
+            sem.Release();
+        }
+    }
+
+    /// <summary>Whether this "table" has ever been saved. Used to detect first-run state.</summary>
+    public async Task<bool> ExistsAsync(string fileName)
+    {
+        var sem = LockFor(fileName);
+        await sem.WaitAsync();
+        try
+        {
+            return File.Exists(PathFor(fileName));
         }
         finally
         {

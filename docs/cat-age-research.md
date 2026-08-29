@@ -62,7 +62,7 @@ Two frameworks came up repeatedly:
   Geriatric (15+ yr).
 
 This app uses the **six-stage** version (`Data/LifeStageCatalog.cs`),
-because it gives the "scroll through Henry's life" timeline more distinct
+because it gives the "scroll through their life" timeline more distinct
 checkpoints to show, rather than one flat "young adult" zone spanning five
 years. The boundaries were smoothed slightly (e.g. Junior ends and Prime
 begins at exactly 2 years, instead of the small 2–3yr gap in the original)
@@ -75,15 +75,16 @@ Sources: the AAHA's own summaries of the 2021 guidelines (aaha.org), AVMA's
 coverage of the same update, and a ResearchGate-hosted copy of the original
 2010 AAFP-AAHA guidelines for the six-stage breakdown.
 
-## What's true for Henry specifically vs. generic
+## Wording of the Kitten/Junior descriptions
 
-The Kitten and Junior stage descriptions in this app are written in past
-tense about Henry (e.g. "his eyes opened around two weeks old") because
-those are safe, general developmental facts true of essentially all
-kittens — teeth timing, weaning age, sexual maturity age, growth-plate
-closure. The Prime/Mature/Senior/Geriatric descriptions are written
-generically, since they describe stages Henry either just reached or
-hasn't reached yet.
+The Kitten and Junior stage descriptions are written about safe, general
+developmental facts true of essentially all kittens — teeth timing, weaning
+age, sexual maturity age, growth-plate closure — since every cat has
+already passed through those stages by the time most people are using an
+age tracker. The Prime/Mature/Senior/Geriatric descriptions are written
+more generically (focused on care/monitoring rather than one-time
+developmental milestones), since which of those stages a given cat has
+reached varies.
 
 ## Caveats worth keeping in mind
 
