@@ -119,19 +119,34 @@ the gear-icon edit form later), that flag flips for good.
 
 Each theme is a `[data-theme="key"]` block in `wwwroot/css/styles.css`
 setting a handful of CSS variables — `--ink`/`--paper`/etc. for page
-chrome (always kept high-contrast for readability), plus `--mark` and
-`--mark-patch` for the cat icon and a couple of accent touches, which carry
-more of the actual color. The icon itself is one shared SVG shape in
-`index.html` with class names (`mark-body`, `mark-eye`, `mark-patch`, ...)
-that each theme's CSS recolors, hides, or (for the White theme) switches to
-an outlined style so a light-colored cat is still visible on a light page.
+chrome (always kept high-contrast for readability), plus `--mark`,
+`--mark-patch`, and `--mark-eye` for the cat icon and a couple of accent
+touches, which carry more of the actual color. The icon itself is one
+shared SVG shape in `index.html` with class names (`mark-body`, `mark-eye`,
+`mark-patch`, ...) that each theme's CSS recolors, hides, or (for the White
+theme) switches to an outlined style so a light-colored cat is still
+visible on a light page.
+
+**Light/dark mode** is a person-controlled toggle (the icon left of the
+gear), not just an OS setting — click it to cycle System → Light → Dark;
+the choice is remembered (`localStorage`) and, on System, still follows the
+OS live if you haven't overridden it. It's implemented as
+`[data-color-scheme="light|dark"]` on `<html>`, resolved and applied by
+`app.js`, rather than a bare `prefers-color-scheme` media query, so the
+manual override can actually win over the OS setting.
 
 Dark mode applies one unified dark palette to the neutral tokens regardless
-of theme, but leaves `--mark`/`--mark-patch` alone so the icon keeps its
-color.
+of theme. The Tuxedo and Black themes' near-black `--mark` reads fine
+against a light page but has ~zero contrast against a dark one, so in dark
+mode those two also get a light edge on the icon (`stroke`, added only
+there) rather than a color change — same black, just outlined so it's
+visible. `--mark-eye` similarly gets a dark-mode override so eyes don't
+default to the (now dark) `--card` and disappear.
 
 **Adding a theme:**
-1. Add a `[data-theme="yourkey"]` block in `wwwroot/css/styles.css`.
+1. Add a `[data-theme="yourkey"]` block in `wwwroot/css/styles.css`. If its
+   `--mark` is very dark, add a dark-mode edge override too (see the
+   Tuxedo/Black rules right after the `[data-color-scheme="dark"]` block).
 2. Add a matching entry (key, name, description, swatch hex) to
    `Data/ThemeCatalog.cs`.
 3. Add the same swatch hex to `THEME_FAVICON_COLORS` in `wwwroot/js/app.js`

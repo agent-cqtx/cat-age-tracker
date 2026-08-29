@@ -2,12 +2,15 @@
    Cat Age Tracker — design tokens
    Each theme is a small, mostly-neutral palette meant to echo one cat
    coloring, set via [data-theme="..."] on <html>. --ink/--paper/etc. stay
-   high-contrast in every theme (they carry body text); --mark and
-   --mark-patch are the more expressive colors used only by the cat-mark
-   icon and a couple of accent touches, so legibility never depends on
-   which theme is picked. Dark mode applies one unified dark palette to the
-   neutral tokens regardless of theme, but leaves --mark/--mark-patch alone
-   so the icon keeps its character.
+   high-contrast in every theme (they carry body text); --mark, --mark-patch
+   and --mark-eye are the more expressive colors used only by the cat-mark
+   icon, so legibility never depends on which theme is picked.
+
+   Light/dark mode is set via [data-color-scheme="light|dark"] on <html>,
+   resolved and applied by app.js (system preference by default, with an
+   explicit override the person can pick and that persists). It's an
+   attribute rather than a `prefers-color-scheme` media query so the
+   in-app toggle can override the OS setting.
 
    Adding a theme? Add a [data-theme="key"] block below AND a matching
    entry in Data/ThemeCatalog.cs (key + swatch color) on the backend.
@@ -24,6 +27,7 @@
   --hairline-strong: #bebebe;
   --mark: #111111;
   --mark-patch: var(--card);
+  --mark-eye: var(--card);
 
   --radius-sm: 6px;
   --radius-md: 14px;
@@ -44,6 +48,7 @@
   --hairline-strong: #bebebe;
   --mark: #111111;
   --mark-patch: var(--card);
+  --mark-eye: var(--card);
 }
 
 [data-theme="black"] {
@@ -56,6 +61,7 @@
   --hairline-strong: #c2c2be;
   --mark: #0d0d0d;
   --mark-patch: var(--card);
+  --mark-eye: var(--card);
 }
 
 [data-theme="white"] {
@@ -68,6 +74,7 @@
   --hairline-strong: #d2d2cf;
   --mark: #dedcd8;
   --mark-patch: var(--card);
+  --mark-eye: var(--ink);
 }
 
 [data-theme="gray"] {
@@ -80,6 +87,7 @@
   --hairline-strong: #c6c6c3;
   --mark: #6b6e73;
   --mark-patch: var(--card);
+  --mark-eye: var(--card);
 }
 
 [data-theme="ginger"] {
@@ -92,23 +100,49 @@
   --hairline-strong: #dcc3a8;
   --mark: #c1662c;
   --mark-patch: #ffe7d2;
+  --mark-eye: var(--card);
 }
 
-@media (prefers-color-scheme: dark) {
-  :root,
-  [data-theme] {
-    --ink: #f5f5f5;
-    --paper: #121212;
-    --card: #1b1b1b;
-    --charcoal: #d9d9d9;
-    --graphite: #9a9a9a;
-    --hairline: #333333;
-    --hairline-strong: #4a4a4a;
-    --shadow-card: 0 1px 2px rgba(0, 0, 0, 0.3), 0 10px 30px rgba(0, 0, 0, 0.45);
-  }
-  /* --mark/--mark-patch intentionally aren't reset here -- a light mark
-     color (e.g. the "white" theme's) reads just as well against the dark
-     card background, so the icon keeps its per-theme character. */
+[data-color-scheme="dark"] {
+  --ink: #f5f5f5;
+  --paper: #121212;
+  --card: #1b1b1b;
+  --charcoal: #d9d9d9;
+  --graphite: #9a9a9a;
+  --hairline: #333333;
+  --hairline-strong: #4a4a4a;
+  --shadow-card: 0 1px 2px rgba(0, 0, 0, 0.3), 0 10px 30px rgba(0, 0, 0, 0.45);
+  /* --card (and therefore the default --mark-eye/--mark-patch, both of
+     which point at --card) just went dark, so give every theme an eye
+     color that stays light regardless of mode -- otherwise eyes fill with
+     a color as dark as the page and effectively vanish. */
+  --mark-eye: #eae7e2;
+}
+
+/* Tuxedo and Black use a near-black --mark, which reads fine against a
+   light page but disappears entirely against a dark one -- same color on
+   top of nearly the same color. Rather than changing that color (it's the
+   right color -- the problem is purely contrast), give the solid shapes a
+   light edge in dark mode so the silhouette stays readable, and keep
+   Tuxedo's patch from inheriting the (now dark) --card. */
+[data-color-scheme="dark"][data-theme="tuxedo"] {
+  --mark-patch: #f2f0ec;
+}
+
+[data-color-scheme="dark"][data-theme="tuxedo"] .cat-mark .mark-body,
+[data-color-scheme="dark"][data-theme="tuxedo"] .cat-mark .mark-head,
+[data-color-scheme="dark"][data-theme="tuxedo"] .cat-mark .mark-ear,
+[data-color-scheme="dark"][data-theme="black"] .cat-mark .mark-body,
+[data-color-scheme="dark"][data-theme="black"] .cat-mark .mark-head,
+[data-color-scheme="dark"][data-theme="black"] .cat-mark .mark-ear {
+  stroke: #d6d4cf;
+  stroke-width: 2;
+  stroke-linejoin: round;
+}
+
+[data-color-scheme="dark"][data-theme="tuxedo"] .cat-mark .mark-tail,
+[data-color-scheme="dark"][data-theme="black"] .cat-mark .mark-tail {
+  stroke: #d6d4cf;
 }
 
 * {
@@ -220,7 +254,7 @@ a {
 }
 
 .cat-mark .mark-eye {
-  fill: var(--card);
+  fill: var(--mark-eye);
 }
 
 .cat-mark .mark-patch,
@@ -273,6 +307,9 @@ a {
 .hero-text h1 {
   font-size: 34px;
   line-height: 1.1;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
 
 .hero-sub {
@@ -1016,8 +1053,28 @@ footer {
    ========================================================================== */
 
 @media (max-width: 460px) {
+  .hero {
+    gap: 10px;
+  }
+
+  .hero-mark {
+    width: 48px;
+    height: 48px;
+  }
+
   .hero-text h1 {
-    font-size: 28px;
+    font-size: 22px;
+  }
+
+  .icon-btn-lg {
+    width: 32px;
+    height: 32px;
+    font-size: 14px;
+  }
+
+  .lock-btn {
+    padding: 8px 10px;
+    font-size: 12px;
   }
 
   .big-mono {

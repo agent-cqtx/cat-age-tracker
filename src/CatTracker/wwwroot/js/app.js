@@ -105,6 +105,51 @@
     }
   }
 
+  // ---- Color scheme (light / dark / system) ----
+  const COLOR_SCHEME_KEY = 'cat-tracker-color-scheme';
+  const COLOR_SCHEME_CYCLE = ['system', 'light', 'dark'];
+  const COLOR_SCHEME_ICON = { system: '\u25D0', light: '\u2600', dark: '\u263E' };
+  const COLOR_SCHEME_LABEL = { system: 'System', light: 'Light', dark: 'Dark' };
+  const darkMediaQuery = window.matchMedia ? window.matchMedia('(prefers-color-scheme: dark)') : null;
+
+  function getStoredColorScheme() {
+    const stored = localStorage.getItem(COLOR_SCHEME_KEY);
+    return COLOR_SCHEME_CYCLE.includes(stored) ? stored : 'system';
+  }
+
+  function resolveColorScheme(pref) {
+    if (pref === 'system') {
+      return darkMediaQuery && darkMediaQuery.matches ? 'dark' : 'light';
+    }
+    return pref;
+  }
+
+  function applyColorScheme() {
+    const pref = getStoredColorScheme();
+    document.documentElement.dataset.colorScheme = resolveColorScheme(pref);
+
+    const btn = document.getElementById('colorSchemeBtn');
+    const icon = document.getElementById('colorSchemeIcon');
+    if (btn && icon) {
+      icon.textContent = COLOR_SCHEME_ICON[pref];
+      btn.setAttribute('aria-label', `Color scheme: ${COLOR_SCHEME_LABEL[pref]} (click to change)`);
+    }
+  }
+
+  document.getElementById('colorSchemeBtn').addEventListener('click', () => {
+    const current = getStoredColorScheme();
+    const next = COLOR_SCHEME_CYCLE[(COLOR_SCHEME_CYCLE.indexOf(current) + 1) % COLOR_SCHEME_CYCLE.length];
+    localStorage.setItem(COLOR_SCHEME_KEY, next);
+    applyColorScheme();
+  });
+
+  if (darkMediaQuery) {
+    darkMediaQuery.addEventListener('change', () => {
+      // Only matters live if the person hasn't overridden the OS setting.
+      if (getStoredColorScheme() === 'system') applyColorScheme();
+    });
+  }
+
   // ---- Modal ----
   const modalOverlay = document.getElementById('modalOverlay');
   const modalContent = document.getElementById('modalContent');
@@ -881,6 +926,10 @@
   }
 
   // ---- Init ----
+  // Applied synchronously, before any network round-trip, so there's no
+  // flash of the wrong scheme while init() is still fetching data.
+  applyColorScheme();
+
   async function init() {
     const now = new Date();
     state.calendarYear = now.getFullYear();
