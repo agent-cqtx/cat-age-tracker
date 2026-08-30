@@ -50,6 +50,15 @@ public static class CatAgeMath
         if (catYears < 0) catYears = 0;
 
         var totalMonths = (int)Math.Round(catYears * 12);
+        if (totalMonths == 0 && catYears > 0)
+        {
+            // Round-to-nearest can hit exactly 0 for a kitten under ~15
+            // days old (e.g. 0.04yr * 12 = 0.48 -> rounds to 0), which
+            // would otherwise print as "0 months". FormatRelative already
+            // guards this same case with Math.Max(1, ...); mirror it here.
+            totalMonths = 1;
+        }
+
         var years = totalMonths / 12;
         var months = totalMonths % 12;
 
