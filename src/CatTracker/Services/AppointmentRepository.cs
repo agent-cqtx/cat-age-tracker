@@ -22,6 +22,10 @@ public class AppointmentRepository
             return appointment;
         });
 
+    public Task<Appointment?> GetByIdAsync(Guid id) =>
+        _store.LoadAsync(FileName, () => new List<Appointment>())
+            .ContinueWith(t => t.Result.FirstOrDefault(a => a.Id == id));
+
     public Task<Appointment?> UpdateAsync(Guid id, Action<Appointment> apply) =>
         _store.MutateAsync<List<Appointment>, Appointment?>(FileName, () => new List<Appointment>(), list =>
         {

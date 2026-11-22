@@ -20,6 +20,7 @@ builder.Services.AddSingleton(new JsonFileStore(dataDir));
 builder.Services.AddSingleton<ProfileRepository>();
 builder.Services.AddSingleton<AppointmentRepository>();
 builder.Services.AddSingleton<DetailRepository>();
+builder.Services.AddSingleton<AttachmentRepository>();
 
 // --- Auth ---------------------------------------------------------------
 builder.Services.AddSingleton<PasswordProvider>();
@@ -87,5 +88,6 @@ app.MapAuthEndpoints();
 app.MapCatEndpoints();
 app.MapAppointmentEndpoints();
 app.MapDetailEndpoints();
+app.MapAttachmentEndpoints();
 
 app.Run();

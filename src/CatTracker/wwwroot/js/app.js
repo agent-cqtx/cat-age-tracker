@@ -12,6 +12,8 @@
     calendarYear: null,
     calendarMonth: null, // 0-11
     selectedDate: null, // 'YYYY-MM-DD' or null
+    view: 'calendar', // 'calendar' | 'documents'
+    generalAttachments: [],
   };
 
   const DEFAULT_THEME = 'tuxedo';
@@ -192,6 +194,7 @@
     document.getElementById('addDetailBtn').classList.toggle('hidden', !value);
     renderAppointmentList();
     renderDetailsList();
+    renderGeneralAttachments();
   }
 
   async function refreshAuthStatus() {
@@ -634,7 +637,8 @@
               <span class="category-tag">${categoryLabels[a.category] || a.category}</span>
             </div>
             ${actions}
-          </div>`;
+          </div>
+          <div class="appt-attachments" data-att-appt="${a.id}"></div>`;
       })
       .join('');
 
@@ -643,6 +647,9 @@
     });
     container.querySelectorAll('[data-delete-appt]').forEach((btn) => {
       btn.addEventListener('click', () => confirmDeleteAppointment(btn.dataset.deleteAppt));
+    });
+    container.querySelectorAll('[data-att-appt]').forEach((box) => {
+      loadAppointmentAttachments(box, box.dataset.attAppt);
     });
   }
 
@@ -914,6 +921,208 @@
 
   document.getElementById('addDetailBtn').addEventListener('click', () => openDetailModal(null));
 
+  // ---- View tabs (Calendar / Documents) ----
+  function setView(view) {
+    state.view = view;
+    document.getElementById('calendarView').classList.toggle('hidden', view !== 'calendar');
+    document.getElementById('documentsView').classList.toggle('hidden', view !== 'documents');
+    const tabCal = document.getElementById('tabCalendar');
+    const tabDocs = document.getElementById('tabDocuments');
+    tabCal.classList.toggle('is-active', view === 'calendar');
+    tabDocs.classList.toggle('is-active', view === 'documents');
+    tabCal.setAttribute('aria-pressed', view === 'calendar' ? 'true' : 'false');
+    tabDocs.setAttribute('aria-pressed', view === 'documents' ? 'true' : 'false');
+    if (view === 'documents') {
+      loadGeneralAttachments();
+    }
+  }
+
+  document.getElementById('tabCalendar').addEventListener('click', () => setView('calendar'));
+  document.getElementById('tabDocuments').addEventListener('click', () => setView('documents'));
+
+  // ---- Attachments ----
+  // Filenames are untrusted user input: every attachment DOM node below is
+  // built with createElement + textContent — never innerHTML — and every
+  // blob URL is built only from server-issued Guid ids, never from names.
+
+  function formatBytes(bytes) {
+    if (bytes >= 1024 * 1024) {
+      const mb = bytes / (1024 * 1024);
+      return `${mb >= 10 ? Math.round(mb) : mb.toFixed(1)} MB`;
+    }
+    return `${Math.max(1, Math.round(bytes / 1024))} KB`;
+  }
+
+  async function uploadFiles(uploadUrl, files, onDone) {
+    for (const file of files) {
+      const form = new FormData();
+      form.append('file', file);
+      const res = await fetch(uploadUrl, { method: 'POST', body: form, credentials: 'same-origin' });
+      if (res.status === 401) {
+        setAuthenticated(false);
+        throw new Error('Session expired — unlock and try again.');
+      }
+      if (!res.ok) {
+        let message = `Upload failed (${res.status})`;
+        try {
+          const body = await res.json();
+          if (body && body.error) message = body.error;
+        } catch {
+          /* no JSON body */
+        }
+        throw new Error(message);
+      }
+    }
+    showToast(files.length === 1 ? 'File uploaded' : `${files.length} files uploaded`);
+    await onDone();
+  }
+
+  function buildUploadRow(uploadUrl, onDone) {
+    const row = document.createElement('div');
+    row.className = 'attachment-upload';
+
+    const input = document.createElement('input');
+    input.type = 'file';
+    input.accept = '.jpg,.jpeg,.png,.webp,.pdf';
+    input.multiple = true;
+
+    const btn = document.createElement('button');
+    btn.type = 'button';
+    btn.className = 'secondary-btn';
+    btn.textContent = 'Upload';
+    btn.addEventListener('click', async () => {
+      const files = Array.from(input.files || []);
+      if (files.length === 0) {
+        showToast('Choose a file first.');
+        return;
+      }
+      btn.disabled = true;
+      try {
+        await uploadFiles(uploadUrl, files, async () => {
+          input.value = '';
+          await onDone();
+        });
+      } catch (err) {
+        showToast(err.message);
+      } finally {
+        btn.disabled = false;
+      }
+    });
+
+    row.append(input, btn);
+    return row;
+  }
+
+  function buildAttachmentItem(att, onDelete) {
+    const fileUrl = `/api/attachments/${att.id}/file`;
+
+    const item = document.createElement('div');
+    item.className = 'attachment-item';
+
+    const link = document.createElement('a');
+    link.href = fileUrl;
+    link.target = '_blank';
+    link.rel = 'noopener';
+    if ((att.contentType || '').startsWith('image/')) {
+      const img = document.createElement('img');
+      img.className = 'attachment-thumb';
+      img.src = fileUrl;
+      img.alt = att.fileName;
+      link.appendChild(img);
+    } else {
+      const icon = document.createElement('span');
+      icon.className = 'attachment-file-icon';
+      icon.textContent = '\u{1F4C4}';
+      link.appendChild(icon);
+    }
+
+    const meta = document.createElement('div');
+    meta.className = 'attachment-meta';
+
+    const name = document.createElement('a');
+    name.className = 'attachment-name';
+    name.href = fileUrl;
+    name.target = '_blank';
+    name.rel = 'noopener';
+    name.textContent = att.fileName;
+
+    const sub = document.createElement('div');
+    sub.className = 'attachment-sub';
+    sub.textContent = `${formatBytes(att.sizeBytes)} · uploaded ${new Date(att.createdAt).toLocaleDateString()}`;
+
+    meta.append(name, sub);
+    item.append(link, meta);
+
+    if (state.authenticated && onDelete) {
+      const del = document.createElement('button');
+      del.type = 'button';
+      del.className = 'icon-btn';
+      del.textContent = '\u{1F5D1}';
+      del.setAttribute('aria-label', `Delete ${att.fileName}`);
+      del.addEventListener('click', async () => {
+        if (!window.confirm(`Delete "${att.fileName}"? This cannot be undone.`)) return;
+        try {
+          await api(`/api/attachments/${att.id}`, { method: 'DELETE' });
+          showToast('Attachment deleted');
+          await onDelete();
+        } catch (err) {
+          showToast(err.message);
+        }
+      });
+      item.append(del);
+    }
+
+    return item;
+  }
+
+  function renderAttachmentBox(container, attachments, uploadUrl, refresh) {
+    container.textContent = '';
+
+    if (attachments.length === 0) {
+      const empty = document.createElement('p');
+      empty.className = 'empty-note';
+      empty.textContent = 'No attachments yet.';
+      container.appendChild(empty);
+    } else {
+      const grid = document.createElement('div');
+      grid.className = 'attachment-grid';
+      attachments.forEach((att) => grid.appendChild(buildAttachmentItem(att, refresh)));
+      container.appendChild(grid);
+    }
+
+    if (state.authenticated) {
+      container.appendChild(buildUploadRow(uploadUrl, refresh));
+    }
+  }
+
+  async function loadAppointmentAttachments(box, appointmentId) {
+    try {
+      const attachments = await api(`/api/appointments/${appointmentId}/attachments`);
+      // The box may have been replaced by a re-render while fetching.
+      if (!box.isConnected) return;
+      renderAttachmentBox(box, attachments, `/api/appointments/${appointmentId}/attachments`, () =>
+        loadAppointmentAttachments(box, appointmentId)
+      );
+    } catch {
+      if (box.isConnected) box.classList.add('hidden');
+    }
+  }
+
+  async function loadGeneralAttachments() {
+    try {
+      state.generalAttachments = await api('/api/attachments');
+    } catch {
+      state.generalAttachments = [];
+    }
+    renderGeneralAttachments();
+  }
+
+  function renderGeneralAttachments() {
+    const container = document.getElementById('generalAttachmentsList');
+    if (!container) return;
+    renderAttachmentBox(container, state.generalAttachments, '/api/attachments', loadGeneralAttachments);
+  }
+
   // ---- Helpers ----
   function escapeHtml(str) {
     return String(str ?? '').replace(/[&<>"']/g, (c) => ({
@@ -942,6 +1151,7 @@
     await loadCatStatus();
     await loadAppointments();
     await loadDetails();
+    await loadGeneralAttachments();
   }
 
   init().catch((err) => {

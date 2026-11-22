@@ -1104,3 +1104,109 @@ select:focus-visible {
   outline: 2px solid var(--ink);
   outline-offset: 2px;
 }
+
+/* ---- View tabs (Calendar / Documents & Notes) ---- */
+.view-tabs {
+  display: flex;
+  gap: 8px;
+  margin-bottom: 14px;
+}
+.view-tab {
+  font-family: var(--font-mono);
+  font-size: 12px;
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+  color: var(--graphite);
+  background: var(--card);
+  border: 1px solid var(--hairline);
+  border-radius: 999px;
+  padding: 8px 16px;
+  cursor: pointer;
+}
+.view-tab:hover {
+  color: var(--charcoal);
+  border-color: var(--hairline-strong);
+}
+.view-tab.is-active {
+  color: var(--paper);
+  background: var(--ink);
+  border-color: var(--ink);
+}
+
+/* ---- Attachments ---- */
+.appt-attachments {
+  margin-top: 8px;
+  padding: 10px 12px;
+  border: 1px dashed var(--hairline);
+  border-radius: var(--radius-sm);
+}
+.appt-attachments:empty {
+  display: none;
+}
+.attachment-grid {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 12px;
+}
+.attachment-item {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 8px;
+  border: 1px solid var(--hairline);
+  border-radius: var(--radius-sm);
+  max-width: 100%;
+}
+.attachment-thumb {
+  width: 84px;
+  height: 84px;
+  object-fit: cover;
+  border-radius: var(--radius-sm);
+  border: 1px solid var(--hairline);
+  display: block;
+}
+.attachment-file-icon {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 84px;
+  height: 84px;
+  font-size: 30px;
+  border: 1px solid var(--hairline);
+  border-radius: var(--radius-sm);
+}
+.attachment-meta {
+  min-width: 0;
+}
+.attachment-name {
+  display: block;
+  font-weight: 600;
+  font-size: 13px;
+  color: var(--charcoal);
+  word-break: break-all;
+  text-decoration: none;
+}
+.attachment-name:hover {
+  text-decoration: underline;
+}
+.attachment-sub {
+  font-family: var(--font-mono);
+  font-size: 11px;
+  color: var(--graphite);
+  margin-top: 4px;
+}
+.attachment-upload {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 8px;
+  margin-top: 10px;
+}
+.attachment-upload input[type="file"] {
+  font-size: 12px;
+  color: var(--graphite);
+  max-width: 100%;
+}
+.documents-card {
+  margin-bottom: 14px;
+}

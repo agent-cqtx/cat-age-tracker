@@ -50,6 +50,13 @@
 
     <div id="appContent" class="hidden">
 
+      <nav class="view-tabs" id="viewTabs" aria-label="Main views">
+        <button type="button" class="view-tab is-active" id="tabCalendar" aria-pressed="true">Calendar</button>
+        <button type="button" class="view-tab" id="tabDocuments" aria-pressed="false">Documents</button>
+      </nav>
+
+      <div id="calendarView">
+
       <section class="card age-readout">
         <div class="age-readout-grid">
           <div>
@@ -126,6 +133,18 @@
         <div id="detailsList"></div>
         <button id="addDetailBtn" class="primary-btn hidden" type="button">+ Add detail</button>
       </section>
+
+      </div><!-- /calendarView -->
+
+      <div id="documentsView" class="hidden">
+
+        <section class="card documents-card">
+          <h2>Documents</h2>
+          <p class="hint">General files — invoices, certificates, anything worth keeping. Available no matter what date is selected.</p>
+          <div id="generalAttachmentsList"></div>
+        </section>
+
+      </div><!-- /documentsView -->
 
     </div>
 

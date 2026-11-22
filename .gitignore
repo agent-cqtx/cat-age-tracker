@@ -5,7 +5,9 @@ obj/
 # Local environment / secrets
 .env
 
-# Local persisted data (only relevant if you run outside Docker)
+# Local persisted data (root bind-mount dir used by docker-compose, and the
+# legacy path used when running outside Docker from src/CatTracker)
+data/
 src/CatTracker/data/
 
 # Editor / OS

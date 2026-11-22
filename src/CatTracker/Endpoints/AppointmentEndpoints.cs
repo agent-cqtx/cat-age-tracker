@@ -50,8 +50,20 @@ public static class AppointmentEndpoints
             return updated is null ? Results.NotFound() : Results.Ok(updated);
         }).RequireAuthorization();
 
-        group.MapDelete("/{id:guid}", async (Guid id, AppointmentRepository repo) =>
-            await repo.DeleteAsync(id) ? Results.NoContent() : Results.NotFound()
-        ).RequireAuthorization();
+        group.MapDelete("/{id:guid}", async (Guid id, AppointmentRepository repo, AttachmentRepository attachments) =>
+        {
+            var deleted = await repo.DeleteAsync(id);
+            if (!deleted) return Results.NotFound();
+
+            // Cascade: an appointment's attachments die with it (metadata rows
+            // first, then their blobs).
+            var removed = await attachments.DeleteForAppointmentAsync(id);
+            foreach (var attachment in removed)
+            {
+                attachments.TryDeleteBlob(attachment.Id);
+            }
+
+            return Results.NoContent();
+        }).RequireAuthorization();
     }
 }

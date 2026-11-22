@@ -33,6 +33,9 @@ public class JsonFileStore
         Directory.CreateDirectory(_basePath);
     }
 
+    /// <summary>The data directory this store persists under (read-only).</summary>
+    public string BasePath => _basePath;
+
     private SemaphoreSlim LockFor(string fileName) =>
         _locks.GetOrAdd(fileName, _ => new SemaphoreSlim(1, 1));
 
