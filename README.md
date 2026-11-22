@@ -178,6 +178,14 @@ system above.
   commonly cited veterinary charts, not medical advice — see
   `docs/cat-age-research.md` for sources and caveats.
 
+## Testing
+
+Automated regression suites live in [`tests/`](tests/README.md):
+`tests/run-tests.sh` (bash+curl API suite) and `tests/ui-smoke.py`
+(Playwright UI smoke). They target the isolated test instance
+(`http://localhost:8094`) and hard-refuse to run against port 8093, the
+live data instance. See `tests/README.md` for prerequisites and how to run.
+
 ## Versioning
 
 This directory is a git repo. Suggested next step: create an empty repo on
