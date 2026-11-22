@@ -953,28 +953,53 @@
     return `${Math.max(1, Math.round(bytes / 1024))} KB`;
   }
 
+  // Uploads files one POST each. Per-file outcomes are accumulated into a
+  // single summary toast, and the list refresh runs in `finally`: when a
+  // batch fails halfway, the files already stored on the server must still
+  // show up without a manual reload (older code threw past the refresh).
+  // Returns the number of successfully uploaded files.
   async function uploadFiles(uploadUrl, files, onDone) {
-    for (const file of files) {
-      const form = new FormData();
-      form.append('file', file);
-      const res = await fetch(uploadUrl, { method: 'POST', body: form, credentials: 'same-origin' });
-      if (res.status === 401) {
-        setAuthenticated(false);
-        throw new Error('Session expired — unlock and try again.');
-      }
-      if (!res.ok) {
-        let message = `Upload failed (${res.status})`;
-        try {
-          const body = await res.json();
-          if (body && body.error) message = body.error;
-        } catch {
-          /* no JSON body */
+    let uploaded = 0;
+    const failures = [];
+    try {
+      for (const file of files) {
+        const form = new FormData();
+        form.append('file', file);
+        const res = await fetch(uploadUrl, { method: 'POST', body: form, credentials: 'same-origin' });
+        if (res.status === 401) {
+          setAuthenticated(false);
+          failures.push('Session expired — unlock and try again.');
+          break; // every remaining file would fail the same way
         }
-        throw new Error(message);
+        if (!res.ok) {
+          let message = `Upload failed (${res.status})`;
+          try {
+            const body = await res.json();
+            if (body && body.error) message = body.error;
+          } catch {
+            /* no JSON body */
+          }
+          failures.push(message);
+          continue;
+        }
+        uploaded++;
+      }
+    } finally {
+      if (uploaded > 0) {
+        try {
+          await onDone();
+        } catch (err) {
+          console.warn('Attachment list refresh failed', err);
+        }
       }
     }
-    showToast(files.length === 1 ? 'File uploaded' : `${files.length} files uploaded`);
-    await onDone();
+    if (failures.length === 0) {
+      showToast(files.length === 1 ? 'File uploaded' : `${uploaded} files uploaded`);
+    } else {
+      const summary = [...new Set(failures)].join('; ');
+      showToast(uploaded > 0 ? `${uploaded} uploaded, ${failures.length} failed: ${summary}` : summary);
+    }
+    return uploaded;
   }
 
   function buildUploadRow(uploadUrl, onDone) {
@@ -998,10 +1023,10 @@
       }
       btn.disabled = true;
       try {
-        await uploadFiles(uploadUrl, files, async () => {
-          input.value = '';
-          await onDone();
-        });
+        const uploaded = await uploadFiles(uploadUrl, files, onDone);
+        // Reset the picker only when everything went through; after a
+        // partial failure keeping the selection helps retry-after-fix.
+        if (uploaded === files.length) input.value = '';
       } catch (err) {
         showToast(err.message);
       } finally {
@@ -1079,10 +1104,14 @@
     container.textContent = '';
 
     if (attachments.length === 0) {
-      const empty = document.createElement('p');
-      empty.className = 'empty-note';
-      empty.textContent = 'No attachments yet.';
-      container.appendChild(empty);
+      // Locked viewers get nothing at all here: with no upload control
+      // available to them, the "add something" note is just noise.
+      if (state.authenticated) {
+        const empty = document.createElement('p');
+        empty.className = 'empty-note';
+        empty.textContent = 'No attachments yet.';
+        container.appendChild(empty);
+      }
     } else {
       const grid = document.createElement('div');
       grid.className = 'attachment-grid';
@@ -1103,7 +1132,8 @@
       renderAttachmentBox(box, attachments, `/api/appointments/${appointmentId}/attachments`, () =>
         loadAppointmentAttachments(box, appointmentId)
       );
-    } catch {
+    } catch (err) {
+      console.warn(`Failed to load attachments for appointment ${appointmentId}`, err);
       if (box.isConnected) box.classList.add('hidden');
     }
   }

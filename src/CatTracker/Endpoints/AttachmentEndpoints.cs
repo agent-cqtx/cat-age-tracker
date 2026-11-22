@@ -1,5 +1,6 @@
 using CatTracker.Models;
 using CatTracker.Services;
+using Microsoft.AspNetCore.Http.Features;
 
 namespace CatTracker.Endpoints;
 
@@ -14,6 +15,12 @@ public static class AttachmentEndpoints
 {
     private const long MaxSizeBytes = 10 * 1024 * 1024; // 10 MB
 
+    // Multipart framing (boundary lines, content-disposition headers) adds
+    // a few hundred bytes around the file itself; this headroom on the
+    // transport cap keeps a full 10 MB file uploadable while still cutting
+    // the connection off before much more than the limit is ever buffered.
+    private const long MaxBodyBytes = MaxSizeBytes + 64 * 1024;
+
     private static readonly string[] AllowedContentTypes =
     {
         "image/jpeg", "image/png", "image/webp", "application/pdf"
@@ -27,8 +34,8 @@ public static class AttachmentEndpoints
         group.MapGet("/", async (AttachmentRepository attachments) =>
             Results.Ok(await attachments.GetGeneralAsync()));
 
-        group.MapPost("/", async (HttpContext ctx, AttachmentRepository attachments, AppointmentRepository appointments) =>
-            await HandleUpload(ctx, null, attachments, appointments)
+        group.MapPost("/", async (HttpContext ctx, AttachmentRepository attachments) =>
+            await HandleUpload(ctx, null, attachments)
         ).RequireAuthorization();
 
         // Serves the bytes. Open (no auth) so <img src> tags work, same
@@ -36,11 +43,31 @@ public static class AttachmentEndpoints
         group.MapGet("/{id:guid}/file", async (Guid id, HttpContext ctx, AttachmentRepository attachments) =>
         {
             var attachment = await attachments.GetByIdAsync(id);
-            if (attachment is null || !attachments.BlobExists(id)) return Results.NotFound();
+            if (attachment is null) return Results.NotFound();
+
+            Stream blob;
+            try
+            {
+                blob = attachments.OpenBlobRead(id);
+            }
+            catch (FileNotFoundException)
+            {
+                // Blob vanished between the metadata read and the open
+                // (concurrent delete): same story as a missing blob — 404,
+                // not an unhandled 500.
+                return Results.NotFound();
+            }
 
             ctx.Response.Headers["X-Content-Type-Options"] = "nosniff";
-            var stream = attachments.OpenBlobRead(id);
-            return Results.File(stream, attachment.ContentType, fileDownloadName: attachment.FileName);
+            // SECURITY INVARIANT for inline serving: no Content-Disposition
+            // means the browser renders these bytes (PDFs open in the tab),
+            // which is only safe because uploads pass magic-byte sniffing
+            // (HasExpectedMagicBytesAsync) — the bytes here are genuinely
+            // PNG/JPEG/WebP/PDF whatever content type was declared at upload
+            // time — and because of the nosniff header above. A client
+            // cannot store HTML here and get it rendered same-origin. Do
+            // not weaken either check without re-examining the other.
+            return Results.File(blob, attachment.ContentType);
         });
 
         // Handles BOTH kinds — metadata row + blob together.
@@ -64,22 +91,48 @@ public static class AttachmentEndpoints
         apptGroup.MapPost("/{appointmentId:guid}/attachments", async (Guid appointmentId, HttpContext ctx, AppointmentRepository appointments, AttachmentRepository attachments) =>
         {
             if (await appointments.GetByIdAsync(appointmentId) is null) return Results.NotFound();
-            return await HandleUpload(ctx, appointmentId, attachments, appointments);
+            return await HandleUpload(ctx, appointmentId, attachments);
         }).RequireAuthorization();
     }
 
     private static async Task<IResult> HandleUpload(
         HttpContext ctx,
         Guid? appointmentId,
-        AttachmentRepository attachments,
-        AppointmentRepository appointments)
+        AttachmentRepository attachments)
     {
         if (!ctx.Request.HasFormContentType)
         {
             return Results.BadRequest(new { error = "Expected a multipart form upload with a 'file' field." });
         }
 
-        var form = await ctx.Request.ReadFormAsync();
+        // Enforce the size limit at the transport, before Kestrel spools the
+        // whole body to disk/memory. The file.Length check below stays as
+        // the per-field guarantee, but without this cap the advertised 10 MB
+        // limit only bites above Kestrel's 30 MB default, and an even bigger
+        // body escapes ReadFormAsync as an unhandled BadHttpRequestException.
+        var maxBodySizeFeature = ctx.Features.Get<IHttpMaxRequestBodySizeFeature>();
+        if (maxBodySizeFeature is { IsReadOnly: false })
+        {
+            maxBodySizeFeature.MaxRequestBodySize = MaxBodyBytes;
+        }
+
+        IFormCollection form;
+        try
+        {
+            form = await ctx.Request.ReadFormAsync();
+        }
+        catch (BadHttpRequestException ex) when (ex.StatusCode == StatusCodes.Status413PayloadTooLarge)
+        {
+            return Results.Json(new { error = "File exceeds the 10 MB limit." },
+                statusCode: StatusCodes.Status413PayloadTooLarge);
+        }
+        catch (BadHttpRequestException)
+        {
+            // Other transport rejections (malformed multipart, etc.): a
+            // clean 400 instead of a Kestrel "unhandled exception" log line.
+            return Results.BadRequest(new { error = "Malformed multipart upload." });
+        }
+
         var file = form.Files["file"];
         if (file is null || file.Length == 0)
         {
@@ -98,6 +151,12 @@ public static class AttachmentEndpoints
                 statusCode: StatusCodes.Status413PayloadTooLarge);
         }
 
+        if (!await HasExpectedMagicBytesAsync(file))
+        {
+            return Results.Json(new { error = $"File contents do not match the declared type ({file.ContentType})." },
+                statusCode: StatusCodes.Status415UnsupportedMediaType);
+        }
+
         var attachment = new Attachment
         {
             AppointmentId = appointmentId,
@@ -108,14 +167,77 @@ public static class AttachmentEndpoints
 
         // Blob first: if the metadata write then fails, no API path can
         // reference the blob, whereas metadata pointing at a missing blob
-        // would show a broken item forever.
-        await using (var upload = file.OpenReadStream())
+        // would show a broken item forever. (A startup sweep in Program.cs
+        // reaps any blob orphaned by such a failure.)
+        try
         {
+            await using var upload = file.OpenReadStream();
             await attachments.SaveBlobAsync(attachment.Id, upload);
+        }
+        catch (Exception ex) when (ex is IOException or UnauthorizedAccessException)
+        {
+            // Disk full, permissions, etc.: a clean JSON 500. Without this
+            // the exception page (outside Docker, Development env) would
+            // send paths and a stack trace to the client.
+            return Results.Json(new { error = "The server could not store the file." },
+                statusCode: StatusCodes.Status500InternalServerError);
         }
 
         var created = await attachments.AddAsync(attachment);
         return Results.Created($"/api/attachments/{created.Id}", created);
+    }
+
+    /// <summary>
+    /// The declared content type is entirely client-controlled, so uploads
+    /// must also prove it by their leading bytes. This sniff is what makes
+    /// inline serving at the file endpoint safe (see comment there).
+    /// BCL-only, by design — no packages are allowed in this project.
+    /// </summary>
+    private static async Task<bool> HasExpectedMagicBytesAsync(IFormFile file)
+    {
+        var header = new byte[12];
+        await using var stream = file.OpenReadStream();
+        try
+        {
+            // Short files stay partially zero-filled; the prefix checks
+            // below then simply fail.
+            await stream.ReadAtLeastAsync(header, header.Length, throwOnEndOfStream: false);
+        }
+        catch (IOException)
+        {
+            return false;
+        }
+
+        return MatchesMagicBytes(header, file.ContentType);
+    }
+
+    /// <summary>
+    /// Pure magic-byte matcher — separate sync method because ref-struct
+    /// (Span) locals are not allowed inside async method bodies.
+    /// </summary>
+    private static bool MatchesMagicBytes(ReadOnlySpan<byte> header, string contentType)
+    {
+        switch (contentType)
+        {
+            // PNG signature: 0x89 followed by "PNG\r\n\x1a\n" as literal
+            // ASCII bytes. (Written this way because a "\x89"u8 literal
+            // would UTF-8-encode the high byte into two bytes.)
+            case "image/png":
+                return header.Length >= 8
+                    && header[0] == 0x89
+                    && header.Slice(1, 7).SequenceEqual("PNG\r\n\x1a\n"u8);
+            case "image/jpeg":
+                return header.Length >= 3
+                    && header[0] == 0xFF && header[1] == 0xD8 && header[2] == 0xFF;
+            case "application/pdf":
+                return header.StartsWith("%PDF"u8);
+            case "image/webp":
+                return header.StartsWith("RIFF"u8)
+                    && header.Length >= 12
+                    && header.Slice(8, 4).SequenceEqual("WEBP"u8);
+            default:
+                return false;
+        }
     }
 
     /// <summary>

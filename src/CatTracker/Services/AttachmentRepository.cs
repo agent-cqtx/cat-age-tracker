@@ -59,16 +59,21 @@ public class AttachmentRepository
             return existing;
         });
 
-    /// <summary>Removes every attachment row tied to an appointment. Returns the removed rows so their blobs can be deleted too.</summary>
+    /// <summary>
+    /// Removes every attachment row tied to an appointment. Returns the
+    /// removed rows so their blobs can be deleted too. When nothing matched,
+    /// the rewrite is skipped so a plain appointment delete never creates or
+    /// touches attachments.json.
+    /// </summary>
     public Task<List<Attachment>> DeleteForAppointmentAsync(Guid appointmentId) =>
-        _store.MutateAsync(FileName, () => new List<Attachment>(), list =>
+        _store.MutateIfChangedAsync(FileName, () => new List<Attachment>(), list =>
         {
             var removed = list.FindAll(a => a.AppointmentId == appointmentId);
             if (removed.Count > 0)
             {
                 list.RemoveAll(a => a.AppointmentId == appointmentId);
             }
-            return removed;
+            return (removed, removed.Count > 0);
         });
 
     // ---- Blob storage ------------------------------------------------------
@@ -92,8 +97,6 @@ public class AttachmentRepository
 
     public Stream OpenBlobRead(Guid id) => File.OpenRead(BlobPathFor(id));
 
-    public bool BlobExists(Guid id) => File.Exists(BlobPathFor(id));
-
     public void TryDeleteBlob(Guid id)
     {
         try
@@ -101,9 +104,48 @@ public class AttachmentRepository
             var path = BlobPathFor(id);
             if (File.Exists(path)) File.Delete(path);
         }
-        catch (IOException)
+        catch (Exception ex) when (ex is IOException or UnauthorizedAccessException)
         {
             // A leftover orphan blob is harmless; never fail the API for it.
+            // UnauthorizedAccessException matters here: under the Docker
+            // bind-mount the host uid and container uid differ, and
+            // File.Delete throws it (not an IOException) on permission
+            // problems — otherwise the metadata row is already gone and the
+            // delete half-completes with a 500.
         }
+    }
+
+    /// <summary>
+    /// Startup sweep: deletes blob files under the attachments directory
+    /// that have no metadata row, plus any leftover ".tmp" corpses from
+    /// interrupted uploads. None of these are reachable through the API, so
+    /// without this sweep nothing would ever reap them. Called before
+    /// Kestrel accepts requests, so a ".tmp" file can never belong to an
+    /// in-flight upload. Returns the number of files deleted.
+    /// </summary>
+    public async Task<int> ReapOrphanBlobsAsync()
+    {
+        if (!Directory.Exists(_blobDir)) return 0;
+
+        var attachments = await _store.LoadAsync(FileName, () => new List<Attachment>());
+        var known = attachments.Select(a => a.Id.ToString("N")).ToHashSet(StringComparer.OrdinalIgnoreCase);
+
+        var reaped = 0;
+        foreach (var path in Directory.EnumerateFiles(_blobDir))
+        {
+            var isTemp = path.EndsWith(".tmp", StringComparison.OrdinalIgnoreCase);
+            if (!isTemp && known.Contains(Path.GetFileName(path))) continue;
+
+            try
+            {
+                File.Delete(path);
+                reaped++;
+            }
+            catch (Exception ex) when (ex is IOException or UnauthorizedAccessException)
+            {
+                // Couldn't remove it right now; try again on the next start.
+            }
+        }
+        return reaped;
     }
 }

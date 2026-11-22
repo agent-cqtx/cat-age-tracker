@@ -106,6 +106,31 @@ public class JsonFileStore
         }
     }
 
+    /// <summary>
+    /// Like <see cref="MutateAsync{T,TResult}"/> but <paramref name="mutate"/>
+    /// reports whether it actually changed anything; on "no change" the save
+    /// is skipped, so a no-op delete doesn't create or rewrite the table file.
+    /// </summary>
+    public async Task<TResult> MutateIfChangedAsync<T, TResult>(string fileName, Func<T> defaultFactory, Func<T, (TResult Result, bool Changed)> mutate)
+    {
+        var sem = LockFor(fileName);
+        await sem.WaitAsync();
+        try
+        {
+            var data = await LoadUnsafeAsync(fileName, defaultFactory);
+            var (result, changed) = mutate(data);
+            if (changed)
+            {
+                await SaveUnsafeAsync(fileName, data);
+            }
+            return result;
+        }
+        finally
+        {
+            sem.Release();
+        }
+    }
+
     private async Task<T> LoadUnsafeAsync<T>(string fileName, Func<T> defaultFactory)
     {
         var path = PathFor(fileName);

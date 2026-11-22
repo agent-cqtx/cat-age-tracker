@@ -52,12 +52,16 @@ public static class AppointmentEndpoints
 
         group.MapDelete("/{id:guid}", async (Guid id, AppointmentRepository repo, AttachmentRepository attachments) =>
         {
-            var deleted = await repo.DeleteAsync(id);
-            if (!deleted) return Results.NotFound();
+            if (await repo.GetByIdAsync(id) is null) return Results.NotFound();
 
-            // Cascade: an appointment's attachments die with it (metadata rows
-            // first, then their blobs).
+            // Cascade: an appointment's attachments die with it. Attachment
+            // rows go FIRST, then the appointment row: with the opposite
+            // order, a concurrent upload that validated the appointment
+            // before the delete could attach a row+blob to a dead
+            // appointment id, unreachable through every list endpoint
+            // forever. Blobs go last — the rows are the only handle to them.
             var removed = await attachments.DeleteForAppointmentAsync(id);
+            await repo.DeleteAsync(id);
             foreach (var attachment in removed)
             {
                 attachments.TryDeleteBlob(attachment.Id);

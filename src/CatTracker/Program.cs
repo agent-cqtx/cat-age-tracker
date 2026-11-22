@@ -64,6 +64,13 @@ if (passwordProvider.WasGenerated)
     app.Logger.LogWarning("=================================================================");
 }
 
+// Reap attachment blobs whose metadata row never made it to disk (crash
+// between the blob write and the metadata write) and ".tmp" corpses from
+// interrupted copies. Runs before Kestrel accepts any request, so nothing
+// is in flight at this point.
+var reapedOrphans = await app.Services.GetRequiredService<AttachmentRepository>().ReapOrphanBlobsAsync();
+app.Logger.LogInformation("Attachment blob sweep: reaped {ReapedCount} orphan file(s).", reapedOrphans);
+
 app.UseDefaultFiles();
 
 // This is a small self-hosted app that gets rebuilt/redeployed often during
