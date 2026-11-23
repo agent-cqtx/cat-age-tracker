@@ -101,7 +101,7 @@ with sync_playwright() as p:
     # Seed/cleanup API context is SEPARATE so the page session starts locked.
     seed = p.request.new_context(base_url=BASE_URL, ignore_https_errors=True)
 
-    appt_id = gen_att_id = None
+    appt_id = gen_att_id = md_att_id = None
     try:
         # ---------- fixture seeding over the API ----------
         seed_session(seed)
@@ -121,6 +121,13 @@ with sync_playwright() as p:
                                           "buffer": PNG_BYTES}})
         assert r.status == 201, f"seed general attachment {r.status}"
         gen_att_id = r.json()["id"]
+
+        r = seed.post("/api/attachments",
+                      multipart={"file": {"name": f"{PREFIX}-notes.md",
+                                          "mimeType": "text/markdown",
+                                          "buffer": b"# ZZ-UI notes\n\nHello **markdown**.\n"}})
+        assert r.status == 201, f"seed markdown attachment {r.status}"
+        md_att_id = r.json()["id"]
 
         r = seed.post(f"/api/appointments/{appt_id}/attachments",
                       multipart={"file": {"name": f"{PREFIX}-appt.png",
@@ -166,6 +173,12 @@ with sync_playwright() as p:
               lambda: (lambda src: None if gen_att_id in src and "/api/attachments/" in src
                        else f"bad src {src}")(
                   page.locator("#documentsView .attachment-thumb").first.get_attribute("src")))
+        check("06b markdown file shows pencil icon in Documents tab",
+              lambda pg=page: (lambda t: None if "\U0001F4DD" in t else f"unexpected icon: {t!r}")(
+                  pg.locator("#documentsView .attachment-item",
+                             has=pg.locator(".attachment-name",
+                                            has_text=f"{PREFIX}-notes.md"))
+                      .locator(".attachment-file-icon").first.inner_text()))
 
         # ---------- Calendar tab: appointment attachment ----------
         step("calendar attachment")
@@ -227,6 +240,8 @@ with sync_playwright() as p:
                 seed.delete(f"/api/appointments/{appt_id}")  # cascades attachments
             if gen_att_id:
                 seed.delete(f"/api/attachments/{gen_att_id}")
+            if md_att_id:
+                seed.delete(f"/api/attachments/{md_att_id}")
             seed.post("/api/auth/logout")
         except Exception as exc:  # noqa: BLE001
             print(f"note: fixture teardown failed: {exc}")

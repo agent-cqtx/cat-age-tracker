@@ -21,9 +21,13 @@ public static class AttachmentEndpoints
     // the connection off before much more than the limit is ever buffered.
     private const long MaxBodyBytes = MaxSizeBytes + 64 * 1024;
 
+    // Sample window for the text sniff: markdown has no magic bytes, so
+    // text/markdown uploads are validated negatively over the leading 8 KB.
+    private const int TextSampleBytes = 8 * 1024;
+
     private static readonly string[] AllowedContentTypes =
     {
-        "image/jpeg", "image/png", "image/webp", "application/pdf"
+        "image/jpeg", "image/png", "image/webp", "application/pdf", "text/markdown"
     };
 
     public static void MapAttachmentEndpoints(this IEndpointRouteBuilder app)
@@ -59,6 +63,19 @@ public static class AttachmentEndpoints
             }
 
             ctx.Response.Headers["X-Content-Type-Options"] = "nosniff";
+            // INVARIANT: text/markdown is ALWAYS served as an attachment
+            // (download), never inline. Inline text/markdown + nosniff is
+            // not itself dangerous — no browser renders or scripts
+            // text/markdown — but we pin the download disposition anyway
+            // so uploaded text can never become same-origin *rendered*
+            // content, whatever future changes touch the inline path for
+            // the image/PDF types below. Do not remove this branch without
+            // re-examining the inline invariant comment that follows.
+            if (attachment.ContentType == "text/markdown")
+            {
+                ctx.Response.Headers["Content-Disposition"] =
+                    $"attachment; filename=\"{HeaderSafeFileName(attachment.FileName)}\"";
+            }
             // SECURITY INVARIANT for inline serving: no Content-Disposition
             // means the browser renders these bytes (PDFs open in the tab),
             // which is only safe because uploads pass magic-byte sniffing
@@ -145,6 +162,17 @@ public static class AttachmentEndpoints
                 statusCode: StatusCodes.Status415UnsupportedMediaType);
         }
 
+        // Markdown policy, deliberately narrow: text/markdown is accepted
+        // ONLY together with a .md/.markdown extension on the file name.
+        // text/plain is NOT accepted at all — the app has no use for
+        // arbitrary text, and letting a markdown body arrive under any
+        // other extension would only widen the sniff's attack surface.
+        if (file.ContentType == "text/markdown" && !HasMarkdownExtension(file.FileName))
+        {
+            return Results.Json(new { error = "text/markdown uploads must have a .md or .markdown extension." },
+                statusCode: StatusCodes.Status415UnsupportedMediaType);
+        }
+
         if (file.Length > MaxSizeBytes)
         {
             return Results.Json(new { error = "File exceeds the 10 MB limit." },
@@ -195,6 +223,30 @@ public static class AttachmentEndpoints
     /// </summary>
     private static async Task<bool> HasExpectedMagicBytesAsync(IFormFile file)
     {
+        if (file.ContentType == "text/markdown")
+        {
+            // Text types carry no signature, so the sniff is negative
+            // instead of positive: read the leading window and prove it
+            // looks like text, not like a binary or HTML wearing a .md
+            // name (see LooksLikeMarkdownText).
+            var sample = new byte[TextSampleBytes];
+            int read;
+            await using (var textStream = file.OpenReadStream())
+            {
+                try
+                {
+                    read = await textStream.ReadAtLeastAsync(sample, sample.Length, throwOnEndOfStream: false);
+                }
+                catch (IOException)
+                {
+                    return false;
+                }
+            }
+            // Span passed straight through as an argument — no ref-struct
+            // local in this async body (not allowed by the compiler).
+            return LooksLikeMarkdownText(sample.AsSpan(0, read));
+        }
+
         var header = new byte[12];
         await using var stream = file.OpenReadStream();
         try
@@ -209,6 +261,89 @@ public static class AttachmentEndpoints
         }
 
         return MatchesMagicBytes(header, file.ContentType);
+    }
+
+    /// <summary>
+    /// Negative text sniff for text/markdown uploads. Nothing else is
+    /// capped or re-encoded: any NUL byte in the leading 8 KB window, or a
+    /// known binary signature (PNG/JPEG/PDF/WebP-RIFF/GIF/ZIP) at the very
+    /// start, means this is a binary renamed to .md. A window that opens
+    /// as HTML after an optional UTF-8 BOM and whitespace ('&lt;!doctype',
+    /// '&lt;html') is rejected too — that is the stored-XSS reason this
+    /// sniff exists: markdown must never smuggle a live HTML page past the
+    /// upload gate. Signatures are checked as a prefix (where they live by
+    /// definition); only the NUL scan covers the whole window, so a prose
+    /// document that merely mentions "%PDF-1.4" mid-file stays valid.
+    /// </summary>
+    private static bool LooksLikeMarkdownText(ReadOnlySpan<byte> sample)
+    {
+        if (sample.Contains((byte)0x00)) return false;
+
+        if (sample.StartsWith("%PDF"u8)
+            || sample.StartsWith("RIFF"u8)
+            || sample.StartsWith("GIF8"u8)          // GIF87a / GIF89a
+            || sample.StartsWith("PK\u0003\u0004"u8) // ZIP (and docx/xlsx/...)
+            || (sample.Length >= 3 && sample[0] == 0xFF && sample[1] == 0xD8 && sample[2] == 0xFF) // JPEG
+            || (sample.Length >= 4 && sample[0] == 0x89 && sample[1] == (byte)'P'
+                && sample[2] == (byte)'N' && sample[3] == (byte)'G')) // PNG
+        {
+            return false;
+        }
+
+        var head = sample;
+        if (head.StartsWith("\uFEFF"u8)) head = head[3..]; // UTF-8 BOM
+        var trim = 0;
+        while (trim < head.Length && head[trim] is (byte)' ' or (byte)'\t' or (byte)'\r' or (byte)'\n' or (byte)'\f')
+        {
+            trim++;
+        }
+        head = head[trim..];
+
+        return !StartsWithAsciiIgnoreCase(head, "<!doctype"u8)
+            && !StartsWithAsciiIgnoreCase(head, "<html"u8);
+    }
+
+    /// <summary>ASCII-case-insensitive prefix compare (prefix must be lowercase).</summary>
+    private static bool StartsWithAsciiIgnoreCase(ReadOnlySpan<byte> span, ReadOnlySpan<byte> lowerPrefix)
+    {
+        if (span.Length < lowerPrefix.Length) return false;
+        for (var i = 0; i < lowerPrefix.Length; i++)
+        {
+            var c = span[i];
+            if (c >= (byte)'A' && c <= (byte)'Z') c += 32;
+            if (c != lowerPrefix[i]) return false;
+        }
+        return true;
+    }
+
+    /// <summary>
+    /// .md / .markdown extension gate for text/markdown uploads. Takes the
+    /// basename with the same rule as SanitizeFileName, so a client cannot
+    /// dodge the gate with a path like "notes.md/evil.txt" (checked as
+    /// evil.txt -> rejected) or smuggle one in via "evil/x.md" (checked as
+    /// x.md -> allowed, same as the browser would treat it).
+    /// </summary>
+    private static bool HasMarkdownExtension(string? fileName)
+    {
+        if (string.IsNullOrEmpty(fileName)) return false;
+        var name = fileName.Split('/', '\\')[^1];
+        var ext = Path.GetExtension(name);
+        return ext.Equals(".md", StringComparison.OrdinalIgnoreCase)
+            || ext.Equals(".markdown", StringComparison.OrdinalIgnoreCase);
+    }
+
+    /// <summary>
+    /// Content-Disposition filename sanitizer: the stored name is already
+    /// control-char-free (SanitizeFileName), but header values must also
+    /// stay quoted-string-safe and ASCII, so anything outside printable
+    /// ASCII — plus quote and backslash — collapses to an underscore.
+    /// </summary>
+    private static string HeaderSafeFileName(string name)
+    {
+        var cleaned = new string(name
+            .Select(c => c is < (char)0x20 or > (char)0x7E or '"' or '\\' ? '_' : c)
+            .ToArray());
+        return cleaned.Length == 0 ? "attachment" : cleaned;
     }
 
     /// <summary>

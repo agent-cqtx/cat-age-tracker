@@ -964,7 +964,15 @@
     try {
       for (const file of files) {
         const form = new FormData();
-        form.append('file', file);
+        // Some browsers report an empty type for .markdown files, and the
+        // backend accepts markdown only as text/markdown + .md/.markdown
+        // name — pin the declared type for markdown picks the browser
+        // could not classify.
+        if (!file.type && /\.(?:md|markdown)$/i.test(file.name)) {
+          form.append('file', new File([file], file.name, { type: 'text/markdown' }));
+        } else {
+          form.append('file', file);
+        }
         const res = await fetch(uploadUrl, { method: 'POST', body: form, credentials: 'same-origin' });
         if (res.status === 401) {
           setAuthenticated(false);
@@ -1008,7 +1016,7 @@
 
     const input = document.createElement('input');
     input.type = 'file';
-    input.accept = '.jpg,.jpeg,.png,.webp,.pdf';
+    input.accept = '.jpg,.jpeg,.png,.webp,.pdf,.md,.markdown';
     input.multiple = true;
 
     const btn = document.createElement('button');
@@ -1057,7 +1065,12 @@
     } else {
       const icon = document.createElement('span');
       icon.className = 'attachment-file-icon';
-      icon.textContent = '\u{1F4C4}';
+      // 📝 for markdown (by declared type or extension — the type is
+      // client-declared, the extension catches old/odd uploads), 📄 for
+      // everything else. Click behavior is identical: link opens/downloads.
+      const isMarkdown = (att.contentType || '') === 'text/markdown'
+        || /\.(?:md|markdown)$/i.test(att.fileName || '');
+      icon.textContent = isMarkdown ? '\u{1F4DD}' : '\u{1F4C4}';
       link.appendChild(icon);
     }
 

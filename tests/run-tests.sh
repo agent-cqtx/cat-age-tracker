@@ -55,6 +55,14 @@ cp "$FX/$PREFIX-general.png" "$FX/$PREFIX-appt.png"
 printf '%%PDF-1.4\n1 0 obj<</Type/Catalog/Pages 2 0 R>>endobj\n2 0 obj<</Type/Pages/Kids[3 0 R]/Count 1>>endobj\n3 0 obj<</Type/Page/Parent 2 0 R/MediaBox[0 0 612 792]>>endobj\ntrailer<</Root 1 0 R>>\n%%%%EOF\n' > "$FX/$PREFIX-doc.pdf"
 # Junk txt (must be rejected: text/plain not allowed)
 echo "this is junk $(date +%s)" > "$FX/rejected.txt"
+# Valid markdown
+printf '# %s vet notes\n\nVaccination **done**.\n\n- next visit: 2027-01-05\n' "$PREFIX" > "$FX/$PREFIX-notes.md"
+# PNG renamed to .md (binary in markdown clothing: must be rejected)
+cp "$FX/$PREFIX-general.png" "$FX/evil.md"
+# HTML renamed to .md (stored-XSS attempt: must be rejected)
+printf '<!DOCTYPE html>\n<html><body><img src=x onerror=alert(1)></body></html>\n' > "$FX/page.md"
+# Valid markdown content under a non-markdown extension (extension gate: must be rejected)
+cp "$FX/$PREFIX-notes.md" "$FX/wrongext.txt"
 # Oversized PDF-ish file: 11 MB (> 10 MB limit)
 { printf '%%PDF-1.4\n'; head -c 11554304 /dev/zero; } > "$FX/$PREFIX-oversize.pdf"
 
@@ -246,24 +254,47 @@ api POST /api/appointments -b "$JAR" -H 'Content-Type: application/json' \
     -d "{\"title\":\"   \",\"when\":\"2026-12-01T10:00:00\",\"category\":\"Vet\"}"
 assert_eq "45 blank-title appointment -> 400" "400" "$CODE"
 
+# ---- Markdown attachments -----------------------------------------------------------
+api POST /api/attachments -b "$JAR" -F "file=@$FX/$PREFIX-notes.md;type=text/markdown"
+assert_eq "46 upload valid markdown -> 201" "201" "$CODE"
+GMD="$(jget "$BODY" '['"'"'id'"'"']')"
+assert_eq "47 markdown metadata fileName matches" "$PREFIX-notes.md" "$(jget "$BODY" '['"'"'fileName'"'"']')"
+MD5_MD="$(md5sum "$FX/$PREFIX-notes.md" | cut -d' ' -f1)"
+api GET "/api/attachments/$GMD/file"
+assert_eq "48 markdown download -> 200" "200" "$CODE"
+assert_eq "49 markdown bytes md5-identical to upload" "$MD5_MD" "$(md5sum "$TMP/body" | cut -d' ' -f1)"
+assert_true "50 markdown download sets nosniff" "no nosniff" grep -qi 'x-content-type-options: nosniff' "$TMP/hdr"
+assert_true "51 markdown download uses attachment disposition" "inline, expected download" grep -qi 'content-disposition: attachment' "$TMP/hdr"
+api DELETE "/api/attachments/$GMD" -b "$JAR"
+assert_eq "52 delete markdown attachment -> 204" "204" "$CODE"
+assert_true "53 markdown blob removed from disk" "blob left on disk" \
+  test ! -e "$DATA_DIR/attachments/$(noguid "$GMD")"
+# adversarial markdown: what the negative text sniff must keep out
+api POST /api/attachments -b "$JAR" -F "file=@$FX/evil.md;type=text/markdown"
+assert_eq "54 PNG renamed evil.md -> 415" "415" "$CODE"
+api POST /api/attachments -b "$JAR" -F "file=@$FX/page.md;type=text/markdown"
+assert_eq "55 HTML-as-page.md -> 415 (stored-XSS sniff)" "415" "$CODE"
+api POST /api/attachments -b "$JAR" -F "file=@$FX/wrongext.txt;type=text/markdown"
+assert_eq "56 markdown bytes named .txt -> 415 (extension gate)" "415" "$CODE"
+
 # ---- Logout -------------------------------------------------------------------------
 api POST /api/auth/logout -b "$JAR" -c "$JAR"
-assert_eq "46 logout -> 200" "200" "$CODE"
+assert_eq "57 logout -> 200" "200" "$CODE"
 api GET /api/auth/status -b "$JAR"
-assert_eq "47 status authenticated=false after logout" "False" \
+assert_eq "58 status authenticated=false after logout" "False" \
   "$(jget "$BODY" '['"'"'authenticated'"'"']')"
 api DELETE "/api/attachments/$GPDF" -b "$JAR"
-assert_eq "48 delete after logout -> 401" "401" "$CODE"
+assert_eq "59 delete after logout -> 401" "401" "$CODE"
 
 # ---- Re-login + idempotent fixture cleanup --------------------------------------------
 login
-assert_eq "49 re-login after suite -> 200" "200" "$CODE"
+assert_eq "60 re-login after suite -> 200" "200" "$CODE"
 sweep_fixtures
 api GET /api/appointments
-assert_eq "50 fixtures swept: no ZZ-AUTOTEST appointments left" "0" \
+assert_eq "61 fixtures swept: no ZZ-AUTOTEST appointments left" "0" \
   "$("$PY" -c 'import json,sys;print(sum(1 for a in json.load(sys.stdin) if a["title"].startswith("'"$PREFIX"'")))' <<<"$BODY")"
 api GET /api/attachments
-assert_eq "51 fixtures swept: no ZZ-AUTOTEST attachments left" "0" \
+assert_eq "62 fixtures swept: no ZZ-AUTOTEST attachments left" "0" \
   "$("$PY" -c 'import json,sys;print(sum(1 for a in json.load(sys.stdin) if a["fileName"].startswith("'"$PREFIX"'")))' <<<"$BODY")"
 
 # ---- Summary ------------------------------------------------------------------------
